@@ -1,4 +1,4 @@
-# Contrats d'API — chaîne de paiement
+# Contrats d'API - chaîne de paiement
 
 Référence commune pour toute l'équipe : dev (services), infra (compose, Prometheus), ia (variables du détecteur), cyber (WAF), gouv (dossier).
 Toute évolution d'un endpoint ou d'une métrique se fait **d'abord ici**, puis dans le code.
@@ -8,7 +8,7 @@ Toute évolution d'un endpoint ou d'une métrique se fait **d'abord ici**, puis 
 | Élément | Règle |
 |---|---|
 | Port | Tous les services FastAPI écoutent sur `8000` |
-| Santé | `GET /health` → `200 {"status": "ok"}` : le processus est vivant (aucune dépendance testée) |
+| Santé | `GET /health` : `200 {"status": "ok"}` : le processus est vivant (aucune dépendance testée) |
 | Métriques | `GET /metrics` au format Prometheus, scrapé toutes les 5 s |
 | Authentification | `Authorization: Bearer <JWT>` sur tous les endpoints métier de `payment-api` |
 | Format | JSON, montants en chaîne ou nombre décimal à 2 décimales, devise `EUR` uniquement |
@@ -89,7 +89,7 @@ Requête :
 
 ### `GET /accounts/{id}` (Bearer JWT)
 
-`200` : `{"id": "ACC-001", "balance": "989.50", "currency": "EUR"}` — `404` si le compte n'existe pas.
+`200` : `{"id": "ACC-001", "balance": "989.50", "currency": "EUR"}` - `404` si le compte n'existe pas.
 
 ### Métriques
 
@@ -144,3 +144,62 @@ En cas d'échec : `ok: false`, `status` vaut le statut métier ou `ERROR`, `deta
 | `POSTGRES_HOST`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | payment-api | Connexion à la base |
 | `AUTH_URL`, `PAYMENT_URL` | canary | Cibles de la sonde |
 | `CANARY_INTERVAL_SECONDS` | canary | Intervalle entre deux transactions |
+
+---
+
+## frontend (relais nginx)
+
+Le navigateur n'appelle que `/api/*` sur la même origine. Le nginx du frontal relaie :
+
+| URL du navigateur | Cible | Limite |
+|---|---|---|
+| `POST /api/auth/token` | `auth-service:8000/auth/token` | 10 par minute par client (429 au-delà) |
+| `/api/transactions`, `/api/transactions/{id}` | `payment-api:8000/transactions...` | 10 par seconde par client |
+| `GET /api/accounts/{id}` | `payment-api:8000/accounts/{id}` | 10 par seconde par client |
+
+Tout autre chemin `/api/` renvoie 404. Corps limité à 16 Ko (413 au-delà).
+
+## dashboard (relais nginx, lecture seule)
+
+| URL du navigateur | Cible | Méthode |
+|---|---|---|
+| `/api/prometheus/query` | `prometheus:9090/api/v1/query` | GET |
+| `/api/prometheus/query_range` | `prometheus:9090/api/v1/query_range` | GET |
+| `/api/canary/probe` | `canary:8000/probe` | POST (6 par minute) |
+| `/api/remediation/incidents` | `remediation-engine:8000/incidents` | GET |
+
+---
+
+## Interfaces prévues (attendues par le dashboard)
+
+### remediation-engine : `GET /incidents?limit=10`
+
+`200` : liste des incidents, du plus récent au plus ancien.
+
+```json
+[
+  {
+    "id": "inc-2026-10-19-001",
+    "trigger": "Anomalie ML sur payment-api",
+    "source": "ml-detector",
+    "status": "CLOSED",
+    "opened_at": "2026-10-19T14:00:05+00:00",
+    "closed_at": "2026-10-19T14:01:20+00:00",
+    "steps": [
+      { "at": "2026-10-19T14:00:05+00:00", "action": "Alerte reçue (HMAC valide)", "result": "score 0.91" },
+      { "at": "2026-10-19T14:00:07+00:00", "action": "Playbook ban_ip.yml", "result": "192.168.137.42 bannie" },
+      { "at": "2026-10-19T14:00:40+00:00", "action": "Vérification canary_up", "result": "1" },
+      { "at": "2026-10-19T14:01:20+00:00", "action": "Transaction de contrôle (POST /probe)", "result": "COMPLETED" }
+    ]
+  }
+]
+```
+
+`status` : `OPEN` | `REMEDIATING` | `VERIFYING` | `CLOSED` | `FAILED`. Un incident n'est `CLOSED` qu'après une transaction de contrôle réussie.
+
+### ml-detector : métriques
+
+| Métrique | Type | Signification |
+|---|---|---|
+| `ml_anomaly_score` | gauge | Score d'anomalie courant, de 0 (normal) à 1 (anormal) |
+| `ml_anomaly_threshold` | gauge | Seuil au-delà duquel une alerte est envoyée à la remédiation |

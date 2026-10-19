@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+/* Couleurs choisies pour un contraste AA (au moins 4,5:1 sur fond blanc) */
+@theme {
+  --color-brand: #1d4ed8;
+  --color-brand-dark: #1e3a8a;
+}
+
+:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
+/* Le titre reçoit le focus à chaque changement de page (lecteurs d'écran) : pas de contour visible */
+h1[tabindex="-1"]:focus {
+  outline: none;
+}
+
+/* Champ piège anti-spam : invisible pour les humains, rempli par les robots */
+.honeypot {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
