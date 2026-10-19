@@ -98,7 +98,10 @@ services:
     <<: *hardening
     image: prom/alertmanager:v0.34.1
     user: "65534:65534"
-    read_only: true
+    # Pas de read_only ici : Compose écrit le secret remediation_bearer_token dans le
+    # conteneur (/run/secrets/) au démarrage, ce qu'un système de fichiers en lecture
+    # seule refuse ("container rootfs is marked read-only"). Le reste du durcissement
+    # est conservé : non-root, cap_drop ALL, no-new-privileges, réseau interne.
     cap_drop: [ALL]
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
@@ -204,6 +207,7 @@ services:
     cap_drop: [ALL]
     environment:
       CONTAINERS: 1   # lister les conteneurs et lire leurs logs (lecture seule)
+      NETWORKS: 1     # lecture des réseaux, requise par discovery.docker d'Alloy (403 sinon)
       EVENTS: 1
       PING: 1
       VERSION: 1
