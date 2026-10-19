@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+/* Jetons de couleur par rôle, en clair et en sombre (palette de visualisation validée).
+   Les couleurs de statut sont réservées aux états et toujours accompagnées d'une icône et d'un libellé. */
+:root {
+  color-scheme: light;
+  --surface-0: #f5f5f3;
+  --surface-1: #fcfcfb;
+  --border: #dddcd6;
+  --grid: #e8e7e3;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --series-1: #2a78d6;
+  --threshold: #52514e;
+  --cta-bg: #1d4ed8;
+  --cta-bg-hover: #1e3a8a;
+  --cta-text: #ffffff;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --neutral: #8a8984;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --surface-0: #121211;
+    --surface-1: #1a1a19;
+    --border: #34342f;
+    --grid: #2a2a27;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --series-1: #3987e5;
+    --threshold: #c3c2b7;
+    --cta-bg: #256abf;
+    --cta-bg-hover: #1c5cab;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-0: #121211;
+  --surface-1: #1a1a19;
+  --border: #34342f;
+  --grid: #2a2a27;
+  --text-primary: #f0efec;
+  --text-secondary: #c3c2b7;
+  --series-1: #3987e5;
+  --threshold: #c3c2b7;
+  --cta-bg: #256abf;
+  --cta-bg-hover: #1c5cab;
+}
+
+body {
+  margin: 0;
+  background: var(--surface-0);
+  color: var(--text-primary);
+  font-family: system-ui, sans-serif;
+}
+
+:focus-visible {
+  outline: 3px solid var(--series-1);
+  outline-offset: 2px;
+}
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.muted {
+  color: var(--text-secondary);
+}

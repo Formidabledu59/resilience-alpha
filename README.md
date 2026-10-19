@@ -104,7 +104,7 @@ flowchart LR
 | Service | Techno | Rôle | Exposition |
 |---|---|---|---|
 | `waf` | Nginx + ModSecurity (OWASP CRS) | Point d'entrée unique, filtrage, rate-limit, liste de bannissement | `192.168.137.1:80` → `8080` |
-| `frontend` | React + Tailwind | Interface client de paiement | via WAF |
+| `frontend` | React + Tailwind | Interface client de paiement, pages RGPD et CGU, 404 personnalisée | via WAF |
 | `auth-service` | FastAPI | Authentification, émission de JWT | via WAF |
 | `payment-api` | FastAPI | Création et traitement des transactions | via WAF |
 | `postgres` | PostgreSQL | Données métier fictives | réseau interne uniquement |
@@ -131,6 +131,7 @@ Ollama n'est **pas** un conteneur : il tourne en natif, sur le PC Hôte (`http:/
 ```
 resilience-alpha/
 ├── docker-compose.yml        Définition de tous les conteneurs et réseaux
+├── docker-compose.dev.yml    Surcharge de développement (frontal sur 127.0.0.1:8081, hors démonstration)
 ├── .env.example              Modèle de variables (valeurs factices)
 ├── .github/                  CODEOWNERS, template de PR, CI
 ├── services/                 Développement — un dossier par microservice
@@ -256,6 +257,19 @@ docker compose --profile app --profile security --profile ia --profile remediati
 
 Procédure détaillée, vérifications et dépannage : [`infra/README.md`](infra/README.md).
 
+Chaîne de paiement, frontal et dashboard de supervision :
+
+```bash
+docker compose up -d --build postgres auth-service payment-api canary frontend dashboard
+```
+
+Tant que le WAF n'est pas configuré, le frontal n'est joignable que sur le réseau interne. Pour l'ouvrir sur le PC Hôte pendant le développement (jamais en démonstration) :
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build frontend
+# puis http://127.0.0.1:8081
+```
+
 Ou via Ansible (déploiement complet avec initialisation de Vault et chargement des dashboards) :
 
 ```bash
@@ -293,9 +307,9 @@ docker compose ps                         # tous les services en état healthy
 
 | Vérification | Accès |
 |---|---|
-| Application de paiement | `http://192.168.137.1` |
-| Dashboard de supervision | `http://127.0.0.1:5173` |
-| Grafana | `http://127.0.0.1:3000` |
+| Application de paiement | `http://192.168.137.1` (via le WAF) ; en développement `http://127.0.0.1:8081` |
+| Dashboard de supervision | `http://127.0.0.1:5173` : phase de la démonstration, chiffres clés, courbes, incidents, transaction de contrôle |
+| Grafana | `http://127.0.0.1:3000` : dashboards « Resilience - Vue globale » et « Resilience - Frontal et sécurité » |
 | Prometheus (cibles UP) | `http://127.0.0.1:9090/targets` |
 | Assistant opérateur | `http://127.0.0.1:8501` |
 
@@ -376,8 +390,10 @@ Détails : [`assistant-rag/README.md`](assistant-rag/README.md).
 | Durcissement | Conteneurs non-root, systèmes de fichiers en lecture seule si possible, capacités Linux réduites, réseaux internes isolés |
 | Moindre privilège | Accès Docker de la remédiation filtré par proxy, assistant RAG sans privilèges |
 | Exposition réseau | Seul le WAF est publié sur le réseau du groupe |
+| Frontal et dashboard | En-têtes de sécurité (CSP stricte, anti-iframe), aucune ressource externe, rate-limit et champ piège anti-spam, aucun secret dans le navigateur |
+| Données personnelles | Page RGPD, aucun cookie ni traceur, mesure d'audience par journaux serveur sans adresse IP, conservation 7 jours |
 
-Détails : [`security/hardening.md`](security/hardening.md).
+Détails : [`security/hardening.md`](security/hardening.md). Check-list complète du frontal (RGPD, CGU, SEO, accessibilité, performance, anti-spam, typographie) : [`services/frontend/README.md`](services/frontend/README.md).
 
 ---
 
@@ -395,8 +411,11 @@ Détails : [`security/hardening.md`](security/hardening.md).
 ## 14. Tests
 
 ```bash
-# Tests unitaires d'un service
+# Tests unitaires d'un service Python
 cd services/payment-api && pytest
+
+# Tests du frontal et du dashboard (dans le conteneur Node, voir leur README)
+docker run --rm -v "${PWD}/services/frontend:/app" -v resilience-fe-nm:/app/node_modules -w /app node:22.23.3-alpine3.24 sh -c "npm install -g npm@11.21.0 && npm ci && npm test"
 
 # Scénario de bout en bout : transaction → attaque → reprise → transaction
 python tests/e2e/resilience_scenario.py
@@ -459,6 +478,12 @@ git archive --format=zip --prefix=Workshop2026-M2-G16-Code/ \
 ## 17. Limites connues
 
 Ce démonstrateur est un prototype réalisé en quatre jours. Il n'est pas destiné à la production. Les limites identifiées (mono-hôte, absence de haute disponibilité réelle, modèle ML entraîné sur un trafic simulé, etc.) et ce que nous ferions différemment dans un contexte industriel sont détaillés dans le dossier d'ingénierie.
+
+Limites déjà identifiées côté frontal :
+
+- **HTTPS** : hors périmètre du laboratoire (réseau local, pas de nom de domaine ni de certificat). En production : TLS au WAF, redirection 80 vers 443 et en-tête HSTS.
+- **Droits sur les comptes** : tout utilisateur connecté peut débiter n'importe quel compte de démonstration. En production : chaque compte serait rattaché à son titulaire et contrôlé par payment-api.
+- **Rate-limit du frontal** : la clé est l'adresse du client vu par nginx. Derrière le WAF, il faudra utiliser l'en-tête `X-Forwarded-For` (module realip), sinon tous les clients partageront la même limite.
 
 ---
 

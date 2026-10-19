@@ -54,6 +54,7 @@ jobs:
         run: |
           status=0
           for dir in $(find services ml assistant-rag -type d -name tests -not -path '*/node_modules/*' | xargs -r -n1 dirname | sort -u); do
+            [ -f "$dir/package.json" ] && continue   # application JavaScript : testée par le job front
             echo "::group::pytest $dir"
             if [ -s "$dir/requirements.txt" ]; then pip install -r "$dir/requirements.txt"; fi
             rc=0
@@ -67,3 +68,25 @@ jobs:
             fi
           done
           exit $status
+
+  front:
+    name: Front (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [frontend, dashboard]
+    defaults:
+      run:
+        working-directory: services/${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.23.3"
+      # npm 10 (fourni avec Node 22) plante sur l'arbre de dépendances de vitest 5
+      - run: npm install -g npm@11.21.0 --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
+      # Tests : validation, liens internes, relais nginx, typographie
+      - run: npm test
+      - run: npm run build
