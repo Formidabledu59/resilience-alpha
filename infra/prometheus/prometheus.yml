@@ -1,0 +1,84 @@
+# Prometheus — collecte des métriques de la plateforme.
+# Les cibles des services pas encore développés apparaissent DOWN : c'est normal.
+#
+# Non scrapés (choix assumés) :
+#   - postgres, vault : la santé de la base est couverte par le canary (vraie transaction) ;
+#   - frontend, dashboard, assistant-rag : fichiers statiques / Streamlit, pas de /metrics natif ;
+#   - waf : pas d'exporter, les métriques de blocage viendront des logs ModSecurity dans Loki.
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+  external_labels:
+    platform: resilience-alpha
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  # --- Observabilité (obs-net) ----------------------------------------------
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          layer: observabilite
+
+  - job_name: alertmanager
+    static_configs:
+      - targets: ["alertmanager:9093"]
+        labels:
+          layer: observabilite
+
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]
+        labels:
+          layer: observabilite
+
+  - job_name: alloy
+    static_configs:
+      - targets: ["alloy:12345"]
+        labels:
+          layer: observabilite
+
+  - job_name: grafana
+    static_configs:
+      - targets: ["grafana:3000"]
+        labels:
+          layer: observabilite
+
+  # --- Services FastAPI (convention : port 8000, /metrics) -------------------
+  - job_name: auth-service      # app-net
+    static_configs:
+      - targets: ["auth-service:8000"]
+        labels:
+          layer: application
+
+  - job_name: payment-api       # app-net
+    static_configs:
+      - targets: ["payment-api:8000"]
+        labels:
+          layer: application
+
+  - job_name: canary            # app-net et obs-net
+    static_configs:
+      - targets: ["canary:8000"]
+        labels:
+          layer: application
+
+  - job_name: ml-detector       # obs-net
+    static_configs:
+      - targets: ["ml-detector:8000"]
+        labels:
+          layer: ia
+
+  - job_name: remediation-engine   # obs-net
+    static_configs:
+      - targets: ["remediation-engine:8000"]
+        labels:
+          layer: remediation
