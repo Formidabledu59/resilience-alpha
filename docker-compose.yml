@@ -248,17 +248,15 @@ services:
     read_only: true
     cap_drop: [ALL]
     environment:
+      # POC : utilisateurs fictifs en mémoire, pas de base. JWT_SECRET passera par Vault plus tard.
       VAULT_ADDR: ${VAULT_ADDR:?VAULT_ADDR manquant dans .env}
-      POSTGRES_HOST: postgres
-      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB manquant dans .env}
-      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER manquant dans .env}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant dans .env}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET manquant dans .env}
+      AUTH_DEMO_PASSWORD: ${AUTH_DEMO_PASSWORD:?AUTH_DEMO_PASSWORD manquant dans .env}
+      AUTH_CANARY_PASSWORD: ${AUTH_CANARY_PASSWORD:?AUTH_CANARY_PASSWORD manquant dans .env}
     tmpfs:
       - /tmp
     networks: [app-net, data-net]
     depends_on:
-      postgres:
-        condition: service_healthy
       vault:
         condition: service_healthy
         required: false   # profile "security", peut être absent
@@ -273,6 +271,7 @@ services:
     cap_drop: [ALL]
     environment:
       VAULT_ADDR: ${VAULT_ADDR:?VAULT_ADDR manquant dans .env}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET manquant dans .env}   # vérifie les tokens d'auth-service
       POSTGRES_HOST: postgres
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB manquant dans .env}
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER manquant dans .env}
@@ -296,15 +295,20 @@ services:
     read_only: true
     cap_drop: [ALL]
     environment:
-      CANARY_TARGET_URL: http://waf:8080          # passe par le WAF, comme un vrai client
+      # POC : appels directs aux services. Quand le WAF sera en place, passer par lui comme un
+      # vrai client (AUTH_URL et PAYMENT_URL = http://waf:8080) et dépendre du service waf.
+      AUTH_URL: http://auth-service:8000
+      PAYMENT_URL: http://payment-api:8000
+      AUTH_CANARY_PASSWORD: ${AUTH_CANARY_PASSWORD:?AUTH_CANARY_PASSWORD manquant dans .env}
       CANARY_INTERVAL_SECONDS: ${CANARY_INTERVAL_SECONDS:-5}
     tmpfs:
       - /tmp
     networks: [app-net, obs-net]   # obs-net : scrapé par Prometheus, sollicité par remediation-engine
     depends_on:
-      waf:
+      auth-service:
         condition: service_healthy
-        required: false
+      payment-api:
+        condition: service_healthy
     healthcheck: *fastapi-healthcheck
 
   dashboard:
