@@ -7,6 +7,8 @@ Démonstrateur d'une **plateforme de paiement fictive** capable de subir une att
 
 > ⚠️ **Environnement de laboratoire.** Toutes les données, transactions et identités sont fictives. Aucune donnée bancaire réelle. Les actions offensives sont strictement limitées au SI du groupe 16 et aux machines du consortium (réseau `RESILIENCE-G16`).
 
+> **Où en est le projet ?** Voir l'[état des lieux](docs/etat-des-lieux.md) (fait, à faire, priorités). **Comment l'utiliser ?** Voir la [section 7](#7-utiliser-et-vérifier-la-plateforme).
+
 ---
 
 ## Sommaire
@@ -17,7 +19,7 @@ Démonstrateur d'une **plateforme de paiement fictive** capable de subir une att
 4. [Prérequis](#4-prérequis)
 5. [Réseau du consortium](#5-réseau-du-consortium)
 6. [Installation et démarrage](#6-installation-et-démarrage)
-7. [Vérifier que la plateforme fonctionne](#7-vérifier-que-la-plateforme-fonctionne)
+7. [Utiliser et vérifier la plateforme](#7-utiliser-et-vérifier-la-plateforme)
 8. [Scénario de démonstration](#8-scénario-de-démonstration)
 9. [Détection par machine learning](#9-détection-par-machine-learning)
 10. [Moteur de remédiation](#10-moteur-de-remédiation)
@@ -299,27 +301,88 @@ docker compose down -v     # arrêt et suppression des volumes (remise à zéro)
 
 ---
 
-## 7. Vérifier que la plateforme fonctionne
+## 7. Utiliser et vérifier la plateforme
 
-```bash
-docker compose ps                         # tous les services en état healthy
+Procédure pas à pas, sous Windows (PowerShell, à la racine du dépôt). Le détail du démarrage et le dépannage sont dans [`infra/README.md`](infra/README.md).
+
+### 7.1 Démarrer
+
+1. Démarrer **Docker Desktop** et attendre qu'il soit prêt.
+2. Créer le fichier `.env` avec des secrets aléatoires : bloc PowerShell de [`infra/README.md`](infra/README.md), étape 2. À faire une seule fois.
+3. Lancer la stack d'observabilité, puis la chaîne de paiement, le frontal et le dashboard :
+
+   ```powershell
+   docker compose up -d
+   docker compose up -d --build postgres auth-service payment-api canary frontend dashboard
+   ```
+
+4. Attendre environ une minute, puis vérifier que tout est `healthy` :
+
+   ```powershell
+   docker compose ps -a
+   ```
+
+   12 conteneurs attendus : les 6 de l'observabilité, postgres, auth-service, payment-api, canary, frontend et dashboard.
+
+### 7.2 Utiliser le frontal de paiement
+
+Le frontal est prévu pour être servi par le WAF sur `http://192.168.137.1`. **Tant que le WAF n'est pas configuré**, on l'ouvre sur le PC Hôte avec la surcharge de développement :
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build frontend
 ```
 
-| Vérification | Accès |
-|---|---|
-| Application de paiement | `http://192.168.137.1` (via le WAF) ; en développement `http://127.0.0.1:8081` |
-| Dashboard de supervision | `http://127.0.0.1:5173` : phase de la démonstration, chiffres clés, courbes, incidents, transaction de contrôle |
-| Grafana | `http://127.0.0.1:3000` : dashboards « Resilience - Vue globale » et « Resilience - Frontal et sécurité » |
-| Prometheus (cibles UP) | `http://127.0.0.1:9090/targets` |
-| Assistant opérateur | `http://127.0.0.1:8501` |
+1. Ouvrir **http://127.0.0.1:8081**.
+2. Se connecter avec l'utilisateur fictif **`demo`**. Son mot de passe est celui généré dans `.env` :
 
-Test d'une transaction de bout en bout :
+   ```powershell
+   Select-String -Path .env -Pattern '^AUTH_DEMO_PASSWORD='
+   ```
 
-```bash
-python tests/e2e/transaction_smoke.py --target http://192.168.137.1
+3. Les soldes des comptes fictifs `ACC-001` (1000 €) et `ACC-002` (500 €) s'affichent.
+4. Choisir le compte à débiter, le compte à créditer et un montant (par exemple `12,50`), puis **Valider le paiement**.
+5. Résultat attendu : « Paiement accepté », une référence de transaction, et les soldes mis à jour. Un montant supérieur au solde donne « Paiement refusé : solde insuffisant ».
+6. Les pages **Confidentialité** et **CGU** sont en bas de page. Une adresse inconnue affiche la page 404.
+
+La session dure 15 minutes et s'efface à la fermeture de l'onglet.
+
+### 7.3 Suivre la démonstration sur le dashboard
+
+Ouvrir **http://127.0.0.1:5173** (PC Hôte uniquement).
+
+- **Bandeau de phase** : Avant (nominal), Pendant (incident ou service dégradé), Remédiation, Après (reprise confirmée).
+- **Chiffres clés et courbes** sur 15 minutes : canari, taux de succès, latence p95, débit, erreurs 5xx, score d'anomalie. Survoler une courbe affiche la valeur ; « Voir les valeurs » ouvre le tableau.
+- **Lancer une transaction de contrôle** : exécute immédiatement une transaction canari et affiche le résultat. C'est la preuve de reprise utilisée en fin de démonstration.
+- Les zones « Score d'anomalie » et « Incidents » restent en attente tant que `ml-detector` et `remediation-engine` ne sont pas déployés.
+
+### 7.4 Grafana et Prometheus
+
+| Outil | Adresse | Ce qu'on y vérifie |
+|---|---|---|
+| Grafana | http://127.0.0.1:3000 | Identifiants : `Select-String -Path .env -Pattern '^GRAFANA_ADMIN_'`. Dashboards « Resilience - Vue globale » (cibles, logs) et « Resilience - Frontal et sécurité » (pages vues, 404, rate-limit, échecs de connexion) |
+| Prometheus | http://127.0.0.1:9090/targets | auth-service, payment-api, canary et la stack d'observabilité **UP**. ml-detector et remediation-engine **DOWN** tant qu'ils ne sont pas développés |
+
+Dans Prometheus, la requête `canary_up` doit valoir `1`.
+
+### 7.5 Passer une transaction en ligne de commande
+
+Les API n'ont aucun port publié : le script [`tests/e2e/transaction_curl.sh`](tests/e2e/transaction_curl.sh) s'exécute dans un conteneur `curl` jetable branché sur le réseau interne `app-net`.
+
+```powershell
+$pass = (Select-String -Path .env -Pattern '^AUTH_DEMO_PASSWORD=(.*)').Matches[0].Groups[1].Value
+docker run --rm --network resilience-alpha_app-net -e PASS=$pass -v "${PWD}/tests/e2e:/e2e:ro" curlimages/curl:8.22.0 sh /e2e/transaction_curl.sh
 ```
 
-Résultat attendu : authentification réussie, transaction créée, statut `COMPLETED`.
+Résultat attendu : authentification OK, solde avant et après, puis `Résultat : COMPLETED` (code de sortie 0). Montant et comptes modifiables avec `-e AMOUNT=25.00 -e FROM=ACC-002 -e TO=ACC-001`. Le scénario complet automatisé (`tests/e2e/resilience_scenario.py` : transaction, attaque, reprise, transaction) reste à écrire.
+
+### 7.6 Arrêter
+
+```powershell
+docker compose --profile '*' down      # arrêt de tout, données conservées
+docker compose --profile '*' down -v   # remise à zéro complète (base, métriques, logs, compte Grafana)
+```
+
+L'état d'avancement du projet (fait, à faire, priorités) est tenu à jour dans [`docs/etat-des-lieux.md`](docs/etat-des-lieux.md).
 
 ---
 
