@@ -1,0 +1,13 @@
+# Provider de dashboards : charge les JSON de infra/grafana/dashboards/
+# (monté en lecture seule sur /etc/grafana/dashboards).
+apiVersion: 1
+
+providers:
+  - name: resilience
+    folder: Resilience
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/dashboards

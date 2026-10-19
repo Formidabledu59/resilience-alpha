@@ -1,0 +1,14 @@
+# Règles d'alerte Prometheus, chargées via rule_files dans prometheus.yml.
+# Tant que les services futurs n'existent pas, TargetDown se déclenche pour eux : c'est attendu.
+
+groups:
+  - name: disponibilite
+    rules:
+      - alert: TargetDown
+        expr: up == 0
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cible {{ $labels.job }} injoignable"
+          description: "Prometheus n'arrive plus à scraper {{ $labels.instance }} (job {{ $labels.job }}) depuis plus de 30 secondes."
