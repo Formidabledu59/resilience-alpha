@@ -8,6 +8,8 @@
 #
 # Secrets : uniquement des ${VAR} lues depuis .env (ignoré par Git), voir .env.example.
 
+# Nom de projet fixe : les conteneurs s'appellent resilience-alpha-<service>-1 quel que
+# soit le nom du dossier cloné. remediation-engine les cible par ces noms (ex. resilience-alpha-waf-1).
 name: resilience-alpha
 
 # ---------------------------------------------------------------------------

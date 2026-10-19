@@ -61,6 +61,7 @@ Ollama n'est **pas** un service Docker : il tourne en natif (voir « Réseau et 
 - Deux socket-proxy : `socket-proxy-ro` (`CONTAINERS=1`, `POST=0`) pour alloy ; `socket-proxy-rw` (minimum pour restart/reload) pour remediation-engine. **Seuls ces deux conteneurs montent `docker.sock`, en lecture seule.**
 - `remediation-engine` n'est **jamais** sur `app-net` : il vérifie la reprise via la métrique canary dans Prometheus et demande au canary une transaction de contrôle.
 - Ban IP : volume `waf-banlist`, rw pour remediation-engine, ro pour waf, puis reload du waf via `socket-proxy-rw`.
+- Nom de projet Compose fixe (`name: resilience-alpha` dans `docker-compose.yml`) : les conteneurs s'appellent `resilience-alpha-<service>-1` (ex. `resilience-alpha-waf-1`), quel que soit le nom du dossier cloné. `remediation-engine` cible les conteneurs **par ces noms fixes** : `socket-proxy-rw` (`CONTAINERS=0`) ne lui permet pas de les lister. Ne pas renommer le projet ni utiliser `docker compose -p`.
 - Webhook remediation : HMAC pour ml-detector, bearer token pour Alertmanager.
 - Vault : `cap_add: [IPC_LOCK]` autorisé.
 - Prometheus **ne scrape pas** `postgres` ni `vault` (pas d'exporter, pas d'accès à `data-net`). Choix assumé : la santé de la base est couverte par le canary, qui passe par une vraie transaction.
