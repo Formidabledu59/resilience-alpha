@@ -37,7 +37,7 @@ infra/
 | `alloy` | Collecte des logs des conteneurs | aucun port publié |
 | `socket-proxy-ro` | Accès Docker en lecture seule pour Alloy | aucun port publié |
 
-Les autres services sont rangés dans des **profiles** et ne démarrent que si on les demande (voir « Démarrer les autres services »).
+Les autres services sont rangés dans des **profiles** et ne démarrent que si on les demande (voir « Démarrer les autres services »). Grafana provisionne deux dashboards : « Resilience - Vue globale » et « Resilience - Frontal et sécurité ».
 
 ---
 
@@ -170,19 +170,28 @@ docker compose down -v     # arrêt et suppression des volumes (métriques, logs
 
 ---
 
-## Démarrer les autres services (plus tard)
+## Démarrer les autres services
 
-Les services dont le code arrive progressivement sont rangés dans des profiles :
+Les services applicatifs sont rangés dans des profiles :
 
-| Profile | Services |
-|---|---|
-| `app` | frontend, auth-service, payment-api, canary, dashboard, postgres |
-| `security` | waf, vault |
-| `ia` | ml-detector, assistant-rag |
-| `remediation` | remediation-engine, socket-proxy-rw |
+| Profile | Services | État |
+|---|---|---|
+| `app` | frontend, auth-service, payment-api, canary, dashboard, postgres | **Prêt** : démarrable et vérifié |
+| `security` | waf, vault | Configuration à écrire (`nginx.conf`, `config.hcl` vides) |
+| `ia` | ml-detector, assistant-rag | Code à écrire |
+| `remediation` | remediation-engine, socket-proxy-rw | Code à écrire |
+
+Aujourd'hui, seul le profile `app` est utilisable :
 
 ```powershell
 docker compose --profile app up -d --build
+```
+
+Résultat attendu : 12 conteneurs `healthy` (les 6 de l'observabilité et les 6 du profile `app`). Le dashboard est sur http://127.0.0.1:5173. Le frontal n'est joignable qu'à travers le WAF ; en attendant, utiliser la surcharge de développement (`docker-compose.dev.yml`, http://127.0.0.1:8081). Utilisation pas à pas : [README, section 7](../README.md#7-utiliser-et-vérifier-la-plateforme).
+
+Quand tous les profiles seront prêts :
+
+```powershell
 docker compose --profile app --profile security --profile ia --profile remediation up -d --build
 ```
 
