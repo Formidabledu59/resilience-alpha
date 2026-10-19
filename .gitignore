@@ -1,0 +1,33 @@
+# Secrets locaux : seul .env.example (valeurs factices) est versionné
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Node / front
+node_modules/
+dist/
+
+# IA : modèles entraînés et données brutes non versionnés
+ml/models/*.joblib
+ml/data/raw/
+
+# Sorties de l'initialisation Vault (clés d'unseal, root token, données)
+security/vault/data/
+security/vault/*.keys
+security/vault/*init*.json
+vault-init*.json
+unseal-keys*
+
+# Journaux
+*.log

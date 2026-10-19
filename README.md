@@ -11,7 +11,7 @@ Démonstrateur d'une **plateforme de paiement fictive** capable de subir une att
 
 ## Sommaire
 
-1. [Équipe et responsabilités](#1-équipe-et-responsabilités)
+1. [Équipe](#1-équipe)
 2. [Architecture](#2-architecture)
 3. [Structure du dépôt](#3-structure-du-dépôt)
 4. [Prérequis](#4-prérequis)
@@ -28,20 +28,21 @@ Démonstrateur d'une **plateforme de paiement fictive** capable de subir une att
 15. [Règles de contribution](#15-règles-de-contribution)
 16. [Livrables](#16-livrables)
 17. [Limites connues](#17-limites-connues)
+18. [Contributions](#18-contributions)
 
 ---
 
-## 1. Équipe et responsabilités
+## 1. Équipe
 
-| Membre | Pilier principal | Périmètre |
-|---|---|---|
-| **Mattheo COPPIN** | Infrastructure · Intégration | Docker Compose, Ansible, Prometheus / Grafana / Loki, moteur de remédiation, réseau |
-| **Ayoub FATHALLAH** | Développement | API paiement, service d'authentification, frontal React, dashboard de supervision, sonde canari |
-| **Zied BOUNOUR** | IA / Data | Jeu de données, modèle de détection d'anomalies, raccordement à la remédiation, assistant RAG |
-| **Papa Cheikh GNINGUE** | Cybersécurité | WAF, Vault, durcissement, règles SOC, scénarios Red Team (PC Attaquant) |
-| **Mouffid ABAYOMI** | Gouvernance · Pilotage | EBIOS RM, PCA/PRA, NIS2/DORA, dossier, pitch, Clip Chrono |
+| Membre | GitHub |
+|---|---|
+| Mouffid ABAYOMI | [@abayomimouffid9](https://github.com/abayomimouffid9) |
+| Zied BOUNOUR | [@Eidlike](https://github.com/Eidlike) |
+| Papa Cheikh GNINGUE | [@PapaCheikh](https://github.com/PapaCheikh) |
+| Mattheo COPPIN | [@Zagoki](https://github.com/Zagoki) |
+| Ayoub FATHALLAH | [@Formidabledu59](https://github.com/Formidabledu59) |
 
-Les décisions d'architecture sont prises collectivement. La contribution de chacun est traçable via les commits, les Pull Requests et le fichier [`.github/CODEOWNERS`](.github/CODEOWNERS).
+Pas de rôle attitré : chaque membre intervient sur l'ensemble des piliers. La contribution de chacun est traçable via l'historique Git et détaillée en fin de projet dans la section [Contributions](#18-contributions).
 
 ---
 
@@ -49,23 +50,31 @@ Les décisions d'architecture sont prises collectivement. La contribution de cha
 
 ```mermaid
 flowchart LR
-    ATK["PC Attaquant<br/>scripts Red Team"] -->|trafic HTTP| WAF
+    ATK["PC Attaquant<br/>scripts Red Team"] -->|"HTTP 192.168.137.1:80"| WAF
 
     subgraph HOTE["PC Hôte — Docker Compose"]
-        WAF["WAF<br/>Nginx + ModSecurity CRS"] --> FRONT["Frontal web<br/>React / Tailwind"]
+        WAF["WAF<br/>Nginx + ModSecurity CRS<br/>:8080 non-root"] --> FRONT["Frontal web<br/>React / Tailwind"]
         WAF --> AUTH["Auth service<br/>FastAPI · JWT"]
         WAF --> API["Payment API<br/>FastAPI"]
-        API --> DB[("PostgreSQL")]
-        API --> VAULT["Vault<br/>secrets"]
+        AUTH --> DB[("PostgreSQL")]
+        API --> DB
+        AUTH --> VAULT["Vault<br/>secrets"]
+        API --> VAULT
         CANARY["Sonde canari<br/>1 transaction / 5 s"] --> WAF
 
-        PROM["Prometheus"] --> ML["Détecteur ML<br/>Isolation Forest"]
+        PROM["Prometheus"] -->|scrape| CANARY
+        PROM --> ML["Détecteur ML<br/>Isolation Forest"]
         LOKI["Loki"] --> ML
+        ALLOY["Grafana Alloy"] -->|journaux| LOKI
+        ALLOY --> PROXYRO["socket-proxy-ro<br/>lecture seule"]
         PROM --> AM["Alertmanager"]
-        ML -->|alerte signée| REM["Moteur de remédiation<br/>FastAPI + Ansible"]
-        AM -->|alerte signée| REM
-        REM -->|actions restreintes| PROXY["docker-socket-proxy"]
-        REM -->|ban IP| WAF
+        ML -->|webhook HMAC| REM["Moteur de remédiation<br/>FastAPI + Ansible"]
+        AM -->|webhook bearer| REM
+        REM -->|métrique canari| PROM
+        REM -->|transaction de contrôle| CANARY
+        REM -->|écrit| BAN[("volume waf-banlist")]
+        BAN -.lecture seule.-> WAF
+        REM -->|restart / reload waf| PROXYRW["socket-proxy-rw<br/>opérations minimales"]
 
         GRAF["Grafana"] --- PROM
         GRAF --- LOKI
@@ -74,16 +83,16 @@ flowchart LR
         RAG["Assistant RAG<br/>LangChain"] -.lecture seule.-> DOCS["docs/"]
     end
 
-    RAG -.-> OLLAMA["Ollama<br/>modèle ≤ 8B"]
+    RAG -.->|OLLAMA_BASE_URL| OLLAMA["Ollama natif hors Docker<br/>PC Hôte ou PC délestage IA<br/>modèle ≤ 8B"]
 ```
 
 ### Boucle de reprise autonome
 
-1. **Collecte** : Prometheus scrape les métriques des services, du WAF et de la sonde canari ; Loki centralise les journaux.
+1. **Collecte** : Prometheus scrape les métriques des services, du WAF et de la sonde canari ; Loki centralise les journaux. PostgreSQL et Vault ne sont pas scrapés : la santé de la base est couverte par le canari, qui exécute une vraie transaction.
 2. **Détection** : le détecteur ML calcule un score d'anomalie toutes les 5 secondes sur une fenêtre glissante de métriques.
 3. **Décision** : au-delà du seuil, une alerte signée est envoyée au moteur de remédiation, qui choisit le playbook adapté au type d'incident.
-4. **Action** : exécution du playbook Ansible (ban de l'IP source au WAF, relance ou mise à l'échelle du service touché).
-5. **Vérification** : le moteur attend que la sonde canari retrouve un taux de succès nominal et qu'une transaction de contrôle aboutisse. L'incident n'est clôturé qu'à cette condition.
+4. **Action** : exécution du playbook Ansible (ban de l'IP source au WAF, relance du service touché).
+5. **Vérification** : le moteur attend que la métrique du canari dans Prometheus retrouve un taux de succès nominal, puis demande au canari une transaction de contrôle. L'incident n'est clôturé que si elle aboutit.
 
 > Un conteneur qui redémarre n'est **pas** considéré comme une reprise. Seule une transaction métier réussie l'est.
 
@@ -91,23 +100,26 @@ flowchart LR
 
 | Service | Techno | Rôle | Exposition |
 |---|---|---|---|
-| `waf` | Nginx + ModSecurity (OWASP CRS) | Point d'entrée unique, filtrage, rate-limit | `192.168.137.1:80` |
+| `waf` | Nginx + ModSecurity (OWASP CRS) | Point d'entrée unique, filtrage, rate-limit, liste de bannissement | `192.168.137.1:80` → `8080` |
 | `frontend` | React + Tailwind | Interface client de paiement | via WAF |
 | `auth-service` | FastAPI | Authentification, émission de JWT | via WAF |
 | `payment-api` | FastAPI | Création et traitement des transactions | via WAF |
 | `postgres` | PostgreSQL | Données métier fictives | réseau interne uniquement |
 | `vault` | HashiCorp Vault | Secrets (identifiants BDD, clés JWT, tokens) | réseau interne uniquement |
-| `canary` | Python | Transaction fictive périodique, métrique de succès | réseau interne uniquement |
-| `prometheus` | Prometheus | Métriques | `127.0.0.1:9090` |
+| `canary` | Python | Transaction fictive périodique, métrique de succès, transaction de contrôle à la demande | réseau interne uniquement |
+| `prometheus` | Prometheus | Métriques (hors `postgres` et `vault`, couverts par le canari) | `127.0.0.1:9090` |
 | `alertmanager` | Alertmanager | Routage des alertes | réseau interne uniquement |
-| `loki` | Loki + Grafana Alloy | Journaux centralisés | réseau interne uniquement |
+| `loki` | Loki | Journaux centralisés | réseau interne uniquement |
+| `alloy` | Grafana Alloy | Collecte des journaux des conteneurs vers Loki | réseau interne uniquement |
 | `grafana` | Grafana | Visualisation, dashboards SOC | `127.0.0.1:3000` |
 | `ml-detector` | Python · scikit-learn | Détection d'anomalies | réseau interne uniquement |
 | `remediation-engine` | FastAPI + Ansible | Décision, action, vérification | réseau interne uniquement |
-| `socket-proxy` | docker-socket-proxy | Accès Docker restreint pour la remédiation | réseau interne uniquement |
+| `socket-proxy-ro` | docker-socket-proxy | Accès Docker en lecture seule pour Alloy (`CONTAINERS=1`, `POST=0`) | réseau interne uniquement |
+| `socket-proxy-rw` | docker-socket-proxy | Accès Docker minimal (restart / reload) pour la remédiation | réseau interne uniquement |
 | `dashboard` | React + Tailwind | Supervision avant / pendant / après | `127.0.0.1:5173` |
 | `assistant-rag` | LangChain + base vectorielle | Aide aux opérateurs | `127.0.0.1:8501` |
-| `ollama` | Ollama | Modèle de langage local | PC Hôte ou PC délestage IA |
+
+Ollama n'est **pas** un conteneur : il tourne en natif, sur le PC Hôte (`http://host.docker.internal:11434`) ou sur le PC délestage IA (`http://192.168.137.x:11434`). `assistant-rag` l'atteint via la variable `OLLAMA_BASE_URL`.
 
 ---
 
@@ -172,7 +184,8 @@ Chaque dossier contient son propre `README.md` détaillant son fonctionnement.
 ### PC délestage IA (optionnel)
 
 - Utilisé uniquement si la RAM du PC Hôte ne suffit pas pour le modèle de langage
-- Héberge **seulement** Ollama, exposé en API sur le réseau du groupe
+- Héberge **seulement** Ollama, installé en natif et exposé en API sur le réseau du groupe (`http://192.168.137.x:11434`)
+- Sur le PC Hôte, Ollama est aussi installé en natif (hors Docker) et joint par les conteneurs via `http://host.docker.internal:11434`
 
 ---
 
@@ -183,18 +196,25 @@ Chaque dossier contient son propre `README.md` détaillant son fonctionnement.
 | Point d'accès mobile Windows | `RESILIENCE-G16` |
 | Réseau | `192.168.137.0/24` |
 | PC Hôte | `192.168.137.1` |
-| Seul port publié sur le réseau | `80` (WAF) |
+| Seul port publié sur le réseau | `192.168.137.1:80` (WAF, vers `8080` dans le conteneur) |
 
-Les interfaces d'administration (Grafana, Prometheus, dashboard, assistant) sont liées à `127.0.0.1` et ne sont consultables que depuis le PC Hôte. La base de données, Vault, Loki, le détecteur ML et le moteur de remédiation n'ont **aucun port publié**.
+> ⚠️ Le point d'accès `RESILIENCE-G16` doit être **actif avant le démarrage de Docker**, sinon la publication sur `192.168.137.1` échoue. On ne publie **jamais** sur `0.0.0.0` : le PC Hôte est aussi connecté au WiFi du campus.
+
+Les interfaces d'administration (Grafana, Prometheus, dashboard, assistant) sont liées à `127.0.0.1` via `ui-net` et ne sont consultables que depuis le PC Hôte. La base de données, Vault, Loki, Alloy, le détecteur ML, le moteur de remédiation et les socket-proxy n'ont **aucun port publié**.
 
 Réseaux Docker :
 
-| Réseau | Contenu | Particularité |
-|---|---|---|
-| `front-net` | WAF, frontend | seul réseau relié à l'extérieur |
-| `back-net` | auth, payment-api, postgres, vault, canary | `internal: true` |
-| `obs-net` | Prometheus, Loki, Grafana, Alertmanager, ML | `internal: true` |
-| `admin-net` | remediation-engine, socket-proxy | `internal: true`, isolé des services métier |
+| Réseau | Type | Contenu | Rôle |
+|---|---|---|---|
+| `edge-net` | bridge | waf | publication du port 80 sur `192.168.137.1` |
+| `ui-net` | bridge | grafana, prometheus, dashboard, assistant-rag | publication des interfaces d'admin sur `127.0.0.1` |
+| `app-net` | `internal: true` | waf, frontend, auth-service, payment-api, canary, prometheus | trafic applicatif derrière le WAF |
+| `data-net` | `internal: true` | auth-service, payment-api, postgres, vault | données et secrets |
+| `obs-net` | `internal: true` | prometheus, alertmanager, loki, alloy, grafana, ml-detector, canary, dashboard, remediation-engine | observabilité, alertes, vérification de la reprise |
+| `admin-net` | `internal: true` | remediation-engine, socket-proxy-rw | actions Docker de la remédiation |
+| `logs-net` | `internal: true` | alloy, socket-proxy-ro | découverte des conteneurs pour la collecte des journaux |
+
+Seuls `socket-proxy-ro` et `socket-proxy-rw` montent `/var/run/docker.sock`, en lecture seule. Le moteur de remédiation n'est **jamais** sur `app-net` : il vérifie la reprise par la métrique du canari dans Prometheus et demande au canari une transaction de contrôle.
 
 ---
 
@@ -233,7 +253,12 @@ ansible-playbook -i infra/ansible/inventory infra/ansible/playbooks/deploy.yml
 ollama pull <modèle retenu>
 ```
 
-Le modèle et l'URL d'Ollama sont configurés dans `.env` (`OLLAMA_MODEL`, `OLLAMA_BASE_URL`).
+Commande à lancer sur la machine qui héberge Ollama en natif (PC Hôte ou PC délestage IA). Le modèle et l'URL d'Ollama sont configurés dans `.env` (`OLLAMA_MODEL`, `OLLAMA_BASE_URL`) :
+
+| Emplacement d'Ollama | `OLLAMA_BASE_URL` |
+|---|---|
+| PC Hôte | `http://host.docker.internal:11434` |
+| PC délestage IA | `http://192.168.137.x:11434` |
 
 ### 6.5 Arrêt et remise à zéro
 
@@ -302,9 +327,10 @@ Le moteur reçoit les alertes (détecteur ML et Alertmanager), associe chaque ty
 
 Ce composant dispose de droits élevés. Il est donc encadré :
 
-- aucun accès direct au socket Docker : il passe par `docker-socket-proxy`, limité aux opérations nécessaires ;
-- webhook d'alerte authentifié (signature HMAC) ;
-- isolé sur `admin-net`, sans port publié ;
+- aucun accès direct au socket Docker : il passe par `socket-proxy-rw`, limité au restart et au reload ;
+- webhook d'alerte authentifié : signature HMAC pour le détecteur ML, bearer token pour Alertmanager ;
+- ban IP par écriture dans le volume `waf-banlist` (monté en lecture seule dans le WAF), puis reload du WAF ;
+- sur `obs-net` et `admin-net` uniquement, jamais sur `app-net`, sans port publié ;
 - liste blanche des playbooks exécutables ;
 - chaque action est journalisée dans Loki avec horodatage, cause et résultat.
 
@@ -368,20 +394,23 @@ Les résultats des essais et des campagnes de chaos engineering sont consignés 
 
 **Branches** : `main` est protégée. On travaille sur des branches courtes, mergées plusieurs fois par jour.
 
-```
-feat/<pilier>-<sujet>     ex. feat/infra-prometheus, feat/ml-isolation-forest
-fix/<pilier>-<sujet>      ex. fix/waf-rate-limit
-```
-
-**Commits** : format *Conventional Commits*.
+Piliers : `dev`, `infra`, `ia`, `cyber`, `gouv`.
 
 ```
-feat(ml): ajout du score d'anomalie
-fix(remediation): vérification du canari avant clôture
+feat/<pilier>-<sujet>     ex. feat/infra-prometheus, feat/ia-isolation-forest
+fix/<pilier>-<sujet>      ex. fix/cyber-waf-rate-limit
+chore/<sujet>             ex. chore/socle
+```
+
+**Commits** : format *Conventional Commits*, en français, avec le pilier en portée.
+
+```
+feat(ia): ajout du score d'anomalie
+fix(infra): vérification du canari avant clôture
 docs(gouv): matrice EBIOS atelier 2
 ```
 
-**Pull Requests** : CI verte obligatoire. Revue obligatoire pour `docker-compose.yml` et `services/remediation-engine/`.
+**Pull Requests** : Toute Pull Request doit être approuvée par un autre membre de l'équipe et la CI doit être verte avant merge.
 
 **Secrets** : ne jamais commiter `.env`, clés, tokens ou mots de passe. Un secret commité reste dans l'historique Git et donc dans l'archive rendue. La CI exécute `gitleaks` à chaque push.
 
@@ -414,6 +443,12 @@ git archive --format=zip --prefix=Workshop2026-M2-G16-Code/ \
 ## 17. Limites connues
 
 Ce démonstrateur est un prototype réalisé en quatre jours. Il n'est pas destiné à la production. Les limites identifiées (mono-hôte, absence de haute disponibilité réelle, modèle ML entraîné sur un trafic simulé, etc.) et ce que nous ferions différemment dans un contexte industriel sont détaillés dans le dossier d'ingénierie.
+
+---
+
+## 18. Contributions
+
+*À compléter à partir de l'historique Git avant le rendu.*
 
 ---
 
