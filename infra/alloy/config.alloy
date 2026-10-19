@@ -1,0 +1,51 @@
+// Grafana Alloy — collecte des logs des conteneurs vers Loki.
+// Accès Docker uniquement via socket-proxy-ro (logs-net) : lecture seule, POST=0.
+
+// Découverte des conteneurs en cours d'exécution
+discovery.docker "containers" {
+  host             = "tcp://socket-proxy-ro:2375"
+  refresh_interval = "5s"
+}
+
+// Labels Loki : on ne garde que les conteneurs du projet
+discovery.relabel "containers" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex         = "resilience-alpha"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "project"
+  }
+}
+
+// Lecture des logs (stdout / stderr) via l'API Docker
+loki.source.docker "containers" {
+  host             = "tcp://socket-proxy-ro:2375"
+  targets          = discovery.docker.containers.targets
+  relabel_rules    = discovery.relabel.containers.rules
+  refresh_interval = "5s"
+  forward_to       = [loki.write.local.receiver]
+}
+
+// Envoi vers Loki (obs-net)
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

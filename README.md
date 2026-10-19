@@ -88,7 +88,10 @@ flowchart LR
 
 ### Boucle de reprise autonome
 
-1. **Collecte** : Prometheus scrape les métriques des services, du WAF et de la sonde canari ; Loki centralise les journaux. PostgreSQL et Vault ne sont pas scrapés : la santé de la base est couverte par le canari, qui exécute une vraie transaction.
+1. **Collecte** : Prometheus scrape toutes les 5 s les métriques des services FastAPI (port `8000`, `/metrics`), de la sonde canari et de la stack d'observabilité ; Alloy envoie les journaux des conteneurs à Loki. Ne sont volontairement **pas** scrapés :
+   - PostgreSQL et Vault : la santé de la base est couverte par le canari, qui exécute une vraie transaction ;
+   - `frontend`, `dashboard` et `assistant-rag` : fichiers statiques ou Streamlit, sans `/metrics` natif ;
+   - le WAF : pas d'exporter, les métriques de blocage viendront des logs ModSecurity dans Loki.
 2. **Détection** : le détecteur ML calcule un score d'anomalie toutes les 5 secondes sur une fenêtre glissante de métriques.
 3. **Décision** : au-delà du seuil, une alerte signée est envoyée au moteur de remédiation, qui choisit le playbook adapté au type d'incident.
 4. **Action** : exécution du playbook Ansible (ban de l'IP source au WAF, relance du service touché).
@@ -138,11 +141,13 @@ resilience-alpha/
 │   ├── canary/
 │   └── remediation-engine/
 ├── infra/                    Infrastructure — déploiement et observabilité
-│   ├── ansible/              inventory/ + playbooks/
+│   ├── README.md             Démarrage et vérification pas à pas (Windows)
+│   ├── ansible/              ansible.cfg, inventory/ + playbooks/
 │   ├── prometheus/
 │   ├── alertmanager/
-│   ├── grafana/provisioning/
-│   └── loki/
+│   ├── grafana/              provisioning/ + dashboards/
+│   ├── loki/
+│   └── alloy/
 ├── security/                 Cybersécurité — défense
 │   ├── waf/
 │   ├── vault/
@@ -233,18 +238,29 @@ cd resilience-alpha
 cp .env.example .env
 ```
 
-Renseigner les valeurs dans `.env`. Ce fichier est ignoré par Git et **ne doit jamais être commité**.
+Renseigner les valeurs dans `.env`. Ce fichier est ignoré par Git et **ne doit jamais être commité**. Sous Windows, [`infra/README.md`](infra/README.md) fournit un bloc PowerShell qui génère des secrets aléatoires à la place des valeurs `changeme_*`.
 
 ### 6.3 Démarrer la plateforme
 
+Sans profile, Compose démarre uniquement la stack d'observabilité (`prometheus`, `alertmanager`, `loki`, `alloy`, `grafana`, `socket-proxy-ro`) :
+
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
+
+Les autres services sont rangés dans des profiles (`app`, `security`, `ia`, `remediation`) :
+
+```bash
+docker compose --profile app --profile security --profile ia --profile remediation up -d --build
+```
+
+Procédure détaillée, vérifications et dépannage : [`infra/README.md`](infra/README.md).
 
 Ou via Ansible (déploiement complet avec initialisation de Vault et chargement des dashboards) :
 
 ```bash
-ansible-playbook -i infra/ansible/inventory infra/ansible/playbooks/deploy.yml
+export ANSIBLE_CONFIG=infra/ansible/ansible.cfg   # obligatoire sous WSL (voir infra/README.md)
+ansible-playbook infra/ansible/playbooks/deploy.yml
 ```
 
 ### 6.4 Modèle de langage

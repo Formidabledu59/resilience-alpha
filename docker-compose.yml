@@ -1,0 +1,491 @@
+# PROJECT RESILIENCE-ALPHA — groupe 16
+# Référence : CLAUDE.md (topologie réseau, noms de services, sécurité).
+#
+# "docker compose up -d" sans profile démarre uniquement la stack d'observabilité :
+#   prometheus, alertmanager, loki, alloy, grafana, socket-proxy-ro.
+# Les autres services sont rangés dans des profiles tant que leur code n'existe pas :
+#   app | security | ia | remediation   (ex. docker compose --profile app up -d)
+#
+# Secrets : uniquement des ${VAR} lues depuis .env (ignoré par Git), voir .env.example.
+
+name: resilience-alpha
+
+# ---------------------------------------------------------------------------
+# Blocs communs
+# ---------------------------------------------------------------------------
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+x-healthcheck-timing: &healthcheck-timing
+  interval: 10s
+  timeout: 5s
+  retries: 5
+  start_period: 20s
+
+# Healthcheck commun aux services FastAPI (convention : port 8000, /health)
+x-fastapi-healthcheck: &fastapi-healthcheck
+  <<: *healthcheck-timing
+  test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+
+# ---------------------------------------------------------------------------
+# Réseaux (voir le tableau de CLAUDE.md)
+# ---------------------------------------------------------------------------
+networks:
+  edge-net:         # bridge : publication du WAF sur 192.168.137.1
+  ui-net:           # bridge : publication des interfaces d'admin sur 127.0.0.1
+  app-net:
+    internal: true  # trafic applicatif derrière le WAF
+  data-net:
+    internal: true  # base de données et secrets
+  obs-net:
+    internal: true  # observabilité, alertes, vérification de la reprise
+  admin-net:
+    internal: true  # actions Docker de la remédiation
+  logs-net:
+    internal: true  # découverte des conteneurs pour Alloy
+
+volumes:
+  prometheus-data:
+  alertmanager-data:
+  loki-data:
+  alloy-data:
+  grafana-data:
+  postgres-data:
+  vault-data:
+  rag-index:
+  waf-banlist:      # rw pour remediation-engine, ro pour waf
+
+secrets:
+  # Alertmanager ne lit pas les variables d'environnement : le token lui est
+  # fourni sous forme de fichier (/run/secrets/remediation_bearer_token).
+  remediation_bearer_token:
+    environment: REMEDIATION_BEARER_TOKEN
+
+services:
+  # =========================================================================
+  # Observabilité (démarrée sans profile)
+  # =========================================================================
+  prometheus:
+    <<: *hardening
+    image: prom/prometheus:v3.15.0
+    user: "65534:65534"   # nobody
+    read_only: true
+    cap_drop: [ALL]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./infra/prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks: [ui-net, app-net, obs-net]
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/healthy"]
+
+  alertmanager:
+    <<: *hardening
+    image: prom/alertmanager:v0.34.1
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./infra/alertmanager:/etc/alertmanager:ro
+      - alertmanager-data:/alertmanager
+    secrets:
+      - remediation_bearer_token
+    networks: [obs-net]
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9093/-/healthy"]
+
+  loki:
+    <<: *hardening
+    image: grafana/loki:3.7.8
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    command: ["-config.file=/etc/loki/loki-config.yml"]
+    volumes:
+      - ./infra/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    tmpfs:
+      - /tmp
+    networks: [obs-net]
+    healthcheck:
+      <<: *healthcheck-timing
+      # Image distroless (ni shell ni wget) : le binaire Loki fournit son propre test
+      test: ["CMD", "/usr/bin/loki", "-health"]
+
+  alloy:
+    <<: *hardening
+    image: grafana/alloy:v1.20.1
+    user: "473:473"       # utilisateur alloy prévu par l'image
+    read_only: true
+    cap_drop: [ALL]
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --storage.path=/var/lib/alloy/data
+      - --server.http.listen-addr=0.0.0.0:12345   # scrapé par Prometheus via obs-net
+      - --disable-reporting
+    volumes:
+      - ./infra/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+    tmpfs:
+      - /tmp
+    networks: [obs-net, logs-net]
+    depends_on:
+      loki:
+        condition: service_healthy
+      socket-proxy-ro:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck-timing
+      # Image Ubuntu sans wget ni curl : requête HTTP via /dev/tcp de bash
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/12345 && printf 'GET /-/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
+
+  grafana:
+    <<: *hardening
+    image: grafana/grafana:12.4.12
+    user: "472:0"         # utilisateur grafana prévu par l'image
+    read_only: true
+    cap_drop: [ALL]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?GRAFANA_ADMIN_USER manquant dans .env}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD manquant dans .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_LOG_MODE: console
+      # Grafana a un accès sortant via ui-net : on coupe télémétrie et vérifications
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/resilience-vue-globale.json
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    tmpfs:
+      - /tmp
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks: [ui-net, obs-net]
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+
+  socket-proxy-ro:
+    <<: *hardening
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    # Root imposé par l'accès au socket Docker. Le ":ro" ci-dessous n'empêche pas
+    # les appels d'API en écriture : le vrai filtrage est fait par le proxy (POST=0).
+    read_only: true
+    cap_drop: [ALL]
+    environment:
+      CONTAINERS: 1   # lister les conteneurs et lire leurs logs (lecture seule)
+      EVENTS: 1
+      PING: 1
+      VERSION: 1
+      POST: 0         # aucune écriture
+      DISABLE_IPV6: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    tmpfs:
+      - /tmp          # haproxy.cfg généré au démarrage
+      - /run          # pidfile
+    networks: [logs-net]
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2375/_ping"]
+
+  # =========================================================================
+  # Profile "app" : services métier (code à venir)
+  # =========================================================================
+  frontend:
+    <<: *hardening
+    profiles: [app]
+    build: ./services/frontend
+    user: "101:101"       # image nginx-unprivileged attendue, écoute sur 8080
+    read_only: true
+    cap_drop: [ALL]
+    tmpfs:
+      - /tmp
+    networks: [app-net]
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+
+  auth-service:
+    <<: *hardening
+    profiles: [app]
+    build: ./services/auth-service
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    environment:
+      VAULT_ADDR: ${VAULT_ADDR:?VAULT_ADDR manquant dans .env}
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB manquant dans .env}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER manquant dans .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant dans .env}
+    tmpfs:
+      - /tmp
+    networks: [app-net, data-net]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      vault:
+        condition: service_healthy
+        required: false   # profile "security", peut être absent
+    healthcheck: *fastapi-healthcheck
+
+  payment-api:
+    <<: *hardening
+    profiles: [app]
+    build: ./services/payment-api
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    environment:
+      VAULT_ADDR: ${VAULT_ADDR:?VAULT_ADDR manquant dans .env}
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB manquant dans .env}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER manquant dans .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant dans .env}
+    tmpfs:
+      - /tmp
+    networks: [app-net, data-net]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      vault:
+        condition: service_healthy
+        required: false
+    healthcheck: *fastapi-healthcheck
+
+  canary:
+    <<: *hardening
+    profiles: [app]
+    build: ./services/canary
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    environment:
+      CANARY_TARGET_URL: http://waf:8080          # passe par le WAF, comme un vrai client
+      CANARY_INTERVAL_SECONDS: ${CANARY_INTERVAL_SECONDS:-5}
+    tmpfs:
+      - /tmp
+    networks: [app-net, obs-net]   # obs-net : scrapé par Prometheus, sollicité par remediation-engine
+    depends_on:
+      waf:
+        condition: service_healthy
+        required: false
+    healthcheck: *fastapi-healthcheck
+
+  dashboard:
+    <<: *hardening
+    profiles: [app]
+    build: ./services/dashboard
+    user: "101:101"       # nginx-unprivileged : sert le build React et relaie vers Prometheus / remediation-engine
+    read_only: true
+    cap_drop: [ALL]
+    tmpfs:
+      - /tmp
+    ports:
+      - "127.0.0.1:5173:8080"
+    networks: [ui-net, obs-net]
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+
+  postgres:
+    <<: *hardening
+    profiles: [app]
+    image: postgres:17.11-alpine3.24
+    user: "70:70"         # utilisateur postgres de l'image alpine
+    read_only: true
+    cap_drop: [ALL]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB manquant dans .env}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER manquant dans .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant dans .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql
+    networks: [data-net]
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+
+  # =========================================================================
+  # Profile "security" : WAF et Vault
+  # =========================================================================
+  waf:
+    <<: *hardening
+    profiles: [security]
+    image: owasp/modsecurity-crs:4.29.0-nginx-alpine-202609301109
+    # Image non-root (nginx) qui écoute sur 8080. read_only à évaluer côté cyber :
+    # l'image génère sa configuration au démarrage à partir de templates.
+    cap_drop: [ALL]
+    volumes:
+      - ./security/waf/nginx.conf:/etc/nginx/templates/conf.d/default.conf.template:ro
+      - waf-banlist:/etc/nginx/banlist:ro
+    ports:
+      # Jamais 0.0.0.0 : le PC Hôte est aussi sur le WiFi du campus.
+      - "${WAF_BIND_IP:?WAF_BIND_IP manquant dans .env}:80:8080"
+    networks: [edge-net, app-net]
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+
+  vault:
+    <<: *hardening
+    profiles: [security]
+    image: hashicorp/vault:2.1.1
+    user: vault
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [IPC_LOCK]   # autorisé par CLAUDE.md
+    command: ["server"]
+    environment:
+      SKIP_SETCAP: "true"   # conteneur déjà non-root
+      SKIP_CHOWN: "true"
+    volumes:
+      - ./security/vault/config.hcl:/vault/config/config.hcl:ro
+      - vault-data:/vault/file
+    tmpfs:
+      - /tmp
+    networks: [data-net]
+    healthcheck:
+      <<: *healthcheck-timing
+      # Sain dès que le processus répond, même scellé ou non initialisé
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8200/v1/sys/health?standbyok=true&sealedcode=200&uninitcode=200"]
+
+  # =========================================================================
+  # Profile "ia" : détection et assistant
+  # =========================================================================
+  ml-detector:
+    <<: *hardening
+    profiles: [ia]
+    build: ./ml/detector
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    environment:
+      PROMETHEUS_URL: http://prometheus:9090
+      LOKI_URL: http://loki:3100
+      REMEDIATION_WEBHOOK_URL: http://remediation-engine:8000/webhook/ml
+      REMEDIATION_HMAC_SECRET: ${REMEDIATION_HMAC_SECRET:?REMEDIATION_HMAC_SECRET manquant dans .env}
+      ML_ANOMALY_THRESHOLD: ${ML_ANOMALY_THRESHOLD:?ML_ANOMALY_THRESHOLD manquant dans .env}
+    volumes:
+      - ./ml/models:/models:ro
+    tmpfs:
+      - /tmp
+    networks: [obs-net]
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck: *fastapi-healthcheck
+
+  assistant-rag:
+    <<: *hardening
+    profiles: [ia]
+    build: ./assistant-rag
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    environment:
+      # Ollama tourne en natif, hors Docker (PC Hôte ou PC délestage IA)
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:?OLLAMA_BASE_URL manquant dans .env}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:?OLLAMA_MODEL manquant dans .env}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./docs:/docs:ro      # lecture seule : aucun accès à Docker, Vault ou la remédiation
+      - rag-index:/data
+    tmpfs:
+      - /tmp
+    ports:
+      - "127.0.0.1:8501:8501"
+    networks: [ui-net]
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3)"]
+
+  # =========================================================================
+  # Profile "remediation" : moteur de remédiation et son accès Docker
+  # =========================================================================
+  remediation-engine:
+    <<: *hardening
+    profiles: [remediation]
+    build: ./services/remediation-engine
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    environment:
+      PROMETHEUS_URL: http://prometheus:9090        # vérifie la reprise via la métrique du canary
+      CANARY_URL: http://canary:8000                # demande une transaction de contrôle
+      DOCKER_HOST: tcp://socket-proxy-rw:2375       # jamais docker.sock en direct
+      WAF_CONTAINER: resilience-alpha-waf-1
+      ANSIBLE_CONFIG: /ansible/ansible.cfg
+      REMEDIATION_HMAC_SECRET: ${REMEDIATION_HMAC_SECRET:?REMEDIATION_HMAC_SECRET manquant dans .env}
+      REMEDIATION_BEARER_TOKEN: ${REMEDIATION_BEARER_TOKEN:?REMEDIATION_BEARER_TOKEN manquant dans .env}
+    volumes:
+      - ./infra/ansible:/ansible:ro
+      # Le Dockerfile doit créer /banlist avec le propriétaire 10001 pour que le volume soit inscriptible
+      - waf-banlist:/banlist
+    tmpfs:
+      - /tmp
+    networks: [obs-net, admin-net]   # jamais app-net
+    depends_on:
+      socket-proxy-rw:
+        condition: service_healthy
+    healthcheck: *fastapi-healthcheck
+
+  socket-proxy-rw:
+    <<: *hardening
+    profiles: [remediation]
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    read_only: true
+    cap_drop: [ALL]
+    environment:
+      # Minimum pour restart / reload : POST autorisé uniquement sur
+      # /containers/<nom>/(stop|restart|kill). CONTAINERS reste à 0, sinon POST=1
+      # ouvrirait aussi /containers/create (création de conteneur = élévation de privilèges).
+      POST: 1
+      ALLOW_RESTARTS: 1
+      CONTAINERS: 0
+      EVENTS: 0
+      PING: 1
+      VERSION: 1
+      DISABLE_IPV6: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    tmpfs:
+      - /tmp
+      - /run
+    networks: [admin-net]
+    healthcheck:
+      <<: *healthcheck-timing
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2375/_ping"]

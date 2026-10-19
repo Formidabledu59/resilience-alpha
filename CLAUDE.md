@@ -87,5 +87,7 @@ Ollama n'est **pas** un service Docker : il tourne en natif (voir « Réseau et 
 ## Qualité attendue
 
 - Chaque service : `Dockerfile`, `README.md`, healthcheck, endpoint `/metrics` Prometheus, tests `pytest` minimaux.
+- Convention FastAPI : tous les services FastAPI écoutent sur le port **`8000`**, avec `/health` (healthcheck), `/metrics` (Prometheus) et `/webhook/...` (réception d'alertes, pour `remediation-engine`).
+- Exceptions au scraping Prometheus (choix assumés) : `frontend`, `dashboard` et `assistant-rag` n'exposent pas de `/metrics` ; le `waf` n'a pas d'exporter, ses métriques de blocage viendront des logs ModSecurity dans Loki.
 - Configs versionnées (dashboards Grafana en JSON provisionnés, règles Prometheus en fichiers).
 - Code commenté sobrement, compréhensible par toute l'équipe : chaque membre doit pouvoir l'expliquer au jury.
