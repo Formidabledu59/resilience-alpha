@@ -127,6 +127,7 @@ services:
     command: ["-config.file=/etc/loki/loki-config.yml"]
     volumes:
       - ./infra/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - ./security/soc-rules/alerts.yml:/etc/loki/rules/fake/alerts.yml:ro   # règles SOC (ruler)
       - loki-data:/loki
     tmpfs:
       - /tmp

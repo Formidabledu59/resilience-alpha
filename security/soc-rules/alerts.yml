@@ -1,0 +1,63 @@
+# Règles SOC : alertes sur les logs, évaluées par le ruler de Loki et envoyées à Alertmanager.
+# Montées dans Loki sur /etc/loki/rules/fake/ (tenant unique, auth_enabled: false).
+#
+# Source : journaux JSON du WAF (service="waf") et d'auth-service. Les seuils sont pensés
+# pour la démo (trafic faible) : à ajuster selon le trafic nominal observé.
+
+groups:
+  - name: waf-soc
+    rules:
+      # Beaucoup de requêtes bloquées par ModSecurity (403) : tentative d'attaque applicative
+      # (injection SQL, XSS, Log4Shell, scan). Le WAF bloque, le SOC qualifie.
+      - alert: WafBlocagesModSecurity
+        expr: |
+          sum(count_over_time({service="waf"} | json | status="403" [2m])) > 10
+        for: 1m
+        labels:
+          severity: warning
+          source: waf
+          pilier: cyber
+        annotations:
+          summary: "Pic de requêtes bloquées par le WAF (ModSecurity)"
+          description: "Plus de 10 réponses 403 du WAF en 2 minutes : probable tentative d'attaque applicative bloquée (voir le dashboard sécurité)."
+
+      # Beaucoup de 429 : rate-limit atteint, probable déni de service applicatif en cours.
+      - alert: WafRateLimitSature
+        expr: |
+          sum(count_over_time({service="waf"} | json | status="429" [2m])) > 100
+        for: 1m
+        labels:
+          severity: warning
+          source: waf
+          pilier: cyber
+        annotations:
+          summary: "Rate-limit du WAF fortement sollicité"
+          description: "Plus de 100 réponses 429 du WAF en 2 minutes : le rate-limit absorbe un afflux anormal (probable DoS applicatif)."
+
+      # Scanner de vulnérabilités détecté par le Core Rule Set (règles 913xxx).
+      - alert: WafScannerDetecte
+        expr: |
+          sum(count_over_time({service="waf"} |= "\"transaction\"" | json rule="transaction.messages[0].details.ruleId" | rule=~"913.*" [5m])) > 0
+        for: 0m
+        labels:
+          severity: info
+          source: waf
+          pilier: cyber
+        annotations:
+          summary: "Scanner de vulnérabilités détecté par le WAF"
+          description: "Le Core Rule Set a déclenché une règle 913xxx (outil de scan). Reconnaissance probable."
+
+  - name: auth-soc
+    rules:
+      # Rafale d'échecs de connexion : possible attaque par force brute sur auth-service.
+      - alert: EchecsConnexionRepetes
+        expr: |
+          sum(count_over_time({service="auth-service"} |= "POST /auth/token" |= " 401" [2m])) > 20
+        for: 1m
+        labels:
+          severity: warning
+          source: auth-service
+          pilier: cyber
+        annotations:
+          summary: "Échecs de connexion répétés"
+          description: "Plus de 20 échecs d'authentification (401) en 2 minutes : possible attaque par force brute."

@@ -1,4 +1,4 @@
-# Loki — journaux centralisés, mode binaire unique, stockage sur disque.
+# Loki - journaux centralisés, mode binaire unique, stockage sur disque.
 # Les données sont dans le volume loki-data (/loki). Rétention : 7 jours.
 
 auth_enabled: false
@@ -39,6 +39,20 @@ compactor:
   working_directory: /loki/compactor
   retention_enabled: true
   delete_request_store: filesystem
+
+# Ruler : évalue les règles SOC (security/soc-rules/) sur les logs et envoie les
+# alertes à Alertmanager. Tenant unique "fake" (auth_enabled: false).
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /etc/loki/rules
+  rule_path: /tmp/loki-ruler
+  alertmanager_url: http://alertmanager:9093
+  enable_alertmanager_v2: true
+  enable_api: true
+  evaluation_interval: 15s
+  poll_interval: 1m
 
 analytics:
   reporting_enabled: false
