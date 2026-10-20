@@ -441,7 +441,7 @@ Détails : [`assistant-rag/README.md`](assistant-rag/README.md).
 | Mesure | Mise en œuvre |
 |---|---|
 | Filtrage applicatif | WAF Nginx + ModSecurity, OWASP Core Rule Set, rate-limit |
-| SIEM / SOC | Journaux centralisés dans Loki, règles de détection et dashboard sécurité dans Grafana |
+| SIEM / SOC | Journaux centralisés dans Loki, règles de détection SOC (ruler Loki vers Alertmanager) et dashboards sécurité dans Grafana |
 | Gestion des secrets | HashiCorp Vault ; aucun secret en clair dans le dépôt |
 | Durcissement | Conteneurs non-root, systèmes de fichiers en lecture seule si possible, capacités Linux réduites, réseaux internes isolés |
 | Moindre privilège | Accès Docker de la remédiation filtré par proxy, assistant RAG sans privilèges |
