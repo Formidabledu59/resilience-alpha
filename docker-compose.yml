@@ -295,16 +295,18 @@ services:
     read_only: true
     cap_drop: [ALL]
     environment:
-      # POC : appels directs aux services. Quand le WAF sera en place, passer par lui comme un
-      # vrai client (AUTH_URL et PAYMENT_URL = http://waf:8080) et dépendre du service waf.
-      AUTH_URL: http://auth-service:8000
-      PAYMENT_URL: http://payment-api:8000
+      # Le canary passe par le WAF comme un vrai client : WAF, frontal, puis les API.
+      # Il mesure donc aussi l'effet d'une attaque ou d'un blocage au WAF.
+      AUTH_URL: http://waf:8080/api
+      PAYMENT_URL: http://waf:8080/api
       AUTH_CANARY_PASSWORD: ${AUTH_CANARY_PASSWORD:?AUTH_CANARY_PASSWORD manquant dans .env}
       CANARY_INTERVAL_SECONDS: ${CANARY_INTERVAL_SECONDS:-5}
     tmpfs:
       - /tmp
     networks: [app-net, obs-net]   # obs-net : scrapé par Prometheus, sollicité par remediation-engine
     depends_on:
+      waf:
+        condition: service_healthy
       auth-service:
         condition: service_healthy
       payment-api:
@@ -348,26 +350,44 @@ services:
       <<: *healthcheck-timing
       test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
 
-  # =========================================================================
-  # Profile "security" : WAF et Vault
-  # =========================================================================
+  # WAF : point d'entrée unique, dans le profile "app" car il fait partie du chemin
+  # applicatif (client ou canary -> WAF -> frontal -> API).
   waf:
     <<: *hardening
-    profiles: [security]
+    profiles: [app]
     image: owasp/modsecurity-crs:4.29.0-nginx-alpine-202609301109
-    # Image non-root (nginx) qui écoute sur 8080. read_only à évaluer côté cyber :
-    # l'image génère sa configuration au démarrage à partir de templates.
+    # Image non-root (nginx) qui écoute sur 8080. Pas de read_only : l'image génère sa
+    # configuration dans /etc/nginx au démarrage (templates, scripts de l'entrypoint).
     cap_drop: [ALL]
+    environment:
+      SERVER_NAME: resilience-alpha
+      # ModSecurity + OWASP CRS : blocage dès un score d'anomalie de 5 (réglage par défaut du CRS)
+      MODSEC_RULE_ENGINE: "on"
+      BLOCKING_PARANOIA: "1"
+      ANOMALY_INBOUND: "5"
+      ANOMALY_OUTBOUND: "4"
+      # Rate-limit par client (voir .env.example)
+      WAF_RATE_LIMIT: ${WAF_RATE_LIMIT:-50r/s}
+      WAF_RATE_BURST: ${WAF_RATE_BURST:-100}
     volumes:
       - ./security/waf/nginx.conf:/etc/nginx/templates/conf.d/default.conf.template:ro
-      - waf-banlist:/etc/nginx/banlist:ro
+      - ./security/waf/crs-exclusions.conf:/etc/modsecurity.d/owasp-crs/rules/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf:ro
+      - waf-banlist:/etc/nginx/banlist:ro   # écrit par remediation-engine, lu ici
     ports:
       # Jamais 0.0.0.0 : le PC Hôte est aussi sur le WiFi du campus.
+      # Sans point d'accès actif, mettre WAF_BIND_IP=127.0.0.1 dans .env (développement).
       - "${WAF_BIND_IP:?WAF_BIND_IP manquant dans .env}:80:8080"
     networks: [edge-net, app-net]
+    depends_on:
+      frontend:
+        condition: service_healthy
     healthcheck:
       <<: *healthcheck-timing
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+
+  # =========================================================================
+  # Profile "security" : Vault
+  # =========================================================================
 
   vault:
     <<: *hardening

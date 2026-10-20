@@ -1,27 +1,208 @@
 {
   "uid": "resilience-frontal-securite",
   "title": "Resilience - Frontal et sécurité",
-  "description": "Audience anonyme du frontal (journaux nginx sans IP), erreurs, rate-limit, échecs de connexion et transactions refusées.",
-  "tags": ["resilience", "frontal", "securite"],
+  "description": "WAF (blocages ModSecurity, rate-limit, bannissement), audience anonyme du frontal, erreurs, échecs de connexion et transactions refusées.",
+  "tags": [
+    "resilience",
+    "frontal",
+    "securite"
+  ],
   "timezone": "browser",
   "editable": false,
   "graphTooltip": 1,
   "refresh": "30s",
   "schemaVersion": 39,
   "version": 1,
-  "time": { "from": "now-6h", "to": "now" },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
   "panels": [
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Requêtes refusées par le WAF",
+      "description": "403 : bloquée par ModSecurity ou adresse bannie. 429 : rate-limit dépassé.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "queryType": "range",
+          "legendFormat": "HTTP {{status}}",
+          "expr": "sum by (status) (count_over_time({service=\"waf\"} |= \"\\\"client\\\"\" | json | status=~\"403|429\" [$__auto]))"
+        }
+      ],
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2
+          },
+          "decimals": 0,
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "HTTP 403"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#2a78d6"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "HTTP 429"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#eb6834"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Règles ModSecurity déclenchées",
+      "description": "Identifiant de la règle OWASP CRS ayant bloqué la requête (942xxx injection SQL, 941xxx XSS, 930xxx accès fichiers, 944xxx Java/Log4Shell, 913xxx scanner).",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "queryType": "instant",
+          "legendFormat": "{{rule}}",
+          "expr": "sort_desc(sum by (rule) (count_over_time({service=\"waf\"} |= \"\\\"transaction\\\"\" | json rule=\"transaction.messages[0].details.ruleId\", code=\"transaction.response.http_code\" | code=\"403\" | rule!=\"\" [$__range])))"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "lastNotNull"
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Clients bloqués par ModSecurity",
+      "description": "Derrière Docker Desktop, le trafic externe apparaît avec l'IP de la passerelle Docker (voir security/waf/README.md).",
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "queryType": "instant",
+          "legendFormat": "{{ip}}",
+          "expr": "sort_desc(sum by (ip) (count_over_time({service=\"waf\"} |= \"\\\"transaction\\\"\" | json ip=\"transaction.client_ip\", code=\"transaction.response.http_code\" | code=\"403\" [$__range])))"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "lastNotNull"
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
     {
       "id": 1,
       "type": "bargauge",
       "title": "Pages vues sur la période",
       "description": "Mesure d'audience sans cookie : journaux du frontal, sans adresse IP.",
-      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 8 },
-      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "loki", "uid": "loki" },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
           "expr": "sum by (path) (count_over_time({service=\"frontend\"} | json | status=\"200\" | path=~\"^/(confidentialite|cgu)?/?$\" [$__range]))",
           "queryType": "instant",
           "legendFormat": "{{path}}"
@@ -30,118 +211,299 @@
       "options": {
         "orientation": "horizontal",
         "displayMode": "basic",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "showUnfilled": true
       },
-      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "#2a78d6" }, "decimals": 0, "min": 0 }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#2a78d6"
+          },
+          "decimals": 0,
+          "min": 0
+        },
+        "overrides": []
+      }
     },
     {
       "id": 2,
       "type": "timeseries",
       "title": "Pages vues dans le temps",
-      "gridPos": { "x": 8, "y": 0, "w": 16, "h": 8 },
-      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": {
+        "x": 8,
+        "y": 8,
+        "w": 16,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "loki", "uid": "loki" },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
           "expr": "sum(count_over_time({service=\"frontend\"} | json | status=\"200\" | path=~\"^/(confidentialite|cgu)?/?$\" [$__auto]))",
           "queryType": "range",
           "legendFormat": "Pages vues"
         }
       ],
-      "options": { "legend": { "showLegend": false }, "tooltip": { "mode": "single" } },
-      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "#2a78d6" }, "custom": { "lineWidth": 2, "fillOpacity": 0 }, "decimals": 0, "min": 0 }, "overrides": [] }
+      "options": {
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#2a78d6"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0
+          },
+          "decimals": 0,
+          "min": 0
+        },
+        "overrides": []
+      }
     },
     {
       "id": 3,
       "type": "timeseries",
       "title": "Échecs de connexion (auth-service, HTTP 401)",
       "description": "Une hausse brutale peut signaler une attaque par force brute.",
-      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
-      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "loki", "uid": "loki" },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
           "expr": "sum(count_over_time({service=\"auth-service\"} |= \"POST /auth/token\" |= \" 401\" [$__auto]))",
           "queryType": "range",
           "legendFormat": "Échecs"
         }
       ],
-      "options": { "legend": { "showLegend": false }, "tooltip": { "mode": "single" } },
-      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "#2a78d6" }, "custom": { "lineWidth": 2 }, "decimals": 0, "min": 0 }, "overrides": [] }
+      "options": {
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#2a78d6"
+          },
+          "custom": {
+            "lineWidth": 2
+          },
+          "decimals": 0,
+          "min": 0
+        },
+        "overrides": []
+      }
     },
     {
       "id": 4,
       "type": "timeseries",
       "title": "Requêtes limitées par le frontal (HTTP 429)",
       "description": "Rate-limit du nginx du frontal (connexion : 10 par minute, API : 10 par seconde).",
-      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
-      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "loki", "uid": "loki" },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
           "expr": "sum(count_over_time({service=\"frontend\"} | json | status=\"429\" [$__auto]))",
           "queryType": "range",
           "legendFormat": "Requêtes limitées"
         }
       ],
-      "options": { "legend": { "showLegend": false }, "tooltip": { "mode": "single" } },
-      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "#2a78d6" }, "custom": { "lineWidth": 2 }, "decimals": 0, "min": 0 }, "overrides": [] }
+      "options": {
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#2a78d6"
+          },
+          "custom": {
+            "lineWidth": 2
+          },
+          "decimals": 0,
+          "min": 0
+        },
+        "overrides": []
+      }
     },
     {
       "id": 5,
       "type": "timeseries",
       "title": "Transactions refusées (solde insuffisant)",
-      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "sum(rate(payment_transactions_total{status=\"REJECTED\"}[1m]))",
           "legendFormat": "Refusées par seconde"
         }
       ],
-      "options": { "legend": { "showLegend": false }, "tooltip": { "mode": "single" } },
-      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "#2a78d6" }, "custom": { "lineWidth": 2 }, "unit": "reqps", "min": 0 }, "overrides": [] }
+      "options": {
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#2a78d6"
+          },
+          "custom": {
+            "lineWidth": 2
+          },
+          "unit": "reqps",
+          "min": 0
+        },
+        "overrides": []
+      }
     },
     {
       "id": 6,
       "type": "table",
       "title": "Adresses introuvables (HTTP 404)",
       "description": "Liens cassés ou exploration automatique : à surveiller.",
-      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
-      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "loki", "uid": "loki" },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
           "expr": "topk(20, sum by (path) (count_over_time({service=\"frontend\"} | json | status=\"404\" [$__range])))",
           "queryType": "instant",
           "legendFormat": "{{path}}"
         }
       ],
-      "transformations": [{ "id": "reduce", "options": { "reducers": ["lastNotNull"] } }],
-      "fieldConfig": { "defaults": {}, "overrides": [] }
+      "transformations": [
+        {
+          "id": "reduce",
+          "options": {
+            "reducers": [
+              "lastNotNull"
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
     },
     {
       "id": 7,
       "type": "logs",
       "title": "Journaux du frontal et d'auth-service",
-      "gridPos": { "x": 0, "y": 24, "w": 24, "h": 12 },
-      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 24,
+        "h": 12
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "loki", "uid": "loki" },
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
           "expr": "{service=~\"frontend|auth-service\"}",
           "queryType": "range"
         }
       ],
-      "options": { "showTime": true, "wrapLogMessage": true, "enableLogDetails": true, "sortOrder": "Descending", "dedupStrategy": "none" }
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
     }
   ]
 }
