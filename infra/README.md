@@ -176,18 +176,20 @@ Les services applicatifs sont rangés dans des profiles :
 
 | Profile | Services | État |
 |---|---|---|
-| `app` | frontend, auth-service, payment-api, canary, dashboard, postgres | **Prêt** : démarrable et vérifié |
-| `security` | waf, vault | Configuration à écrire (`nginx.conf`, `config.hcl` vides) |
+| `app` | waf, frontend, auth-service, payment-api, canary, dashboard, postgres | **Prêt** : démarrable et vérifié |
+| `security` | vault | Configuration à écrire (`config.hcl` vide) |
 | `ia` | ml-detector, assistant-rag | Code à écrire |
 | `remediation` | remediation-engine, socket-proxy-rw | Code à écrire |
 
-Aujourd'hui, seul le profile `app` est utilisable :
+Le WAF est dans `app` : il fait partie du chemin applicatif (client ou canary, WAF, frontal, API). Aujourd'hui, seul le profile `app` est utilisable :
 
 ```powershell
 docker compose --profile app up -d --build
 ```
 
-Résultat attendu : 12 conteneurs `healthy` (les 6 de l'observabilité et les 6 du profile `app`). Le dashboard est sur http://127.0.0.1:5173. Le frontal n'est joignable qu'à travers le WAF ; en attendant, utiliser la surcharge de développement (`docker-compose.dev.yml`, http://127.0.0.1:8081). Utilisation pas à pas : [README, section 7](../README.md#7-utiliser-et-vérifier-la-plateforme).
+Le WAF publie le port 80 sur `WAF_BIND_IP` (`.env`). Si le point d'accès `RESILIENCE-G16` n'est pas actif, `192.168.137.1` n'existe pas : le WAF reste à l'état `Created` et le canary aussi. Dans ce cas, mettre `WAF_BIND_IP=127.0.0.1` (développement sur le PC Hôte seul).
+
+Résultat attendu : 13 conteneurs `healthy` (les 6 de l'observabilité et les 7 du profile `app`). Le frontal est sur http://127.0.0.1 (ou http://192.168.137.1), le dashboard sur http://127.0.0.1:5173. Utilisation pas à pas : [README, section 7](../README.md#7-utiliser-et-vérifier-la-plateforme). Détails du WAF : [`security/waf/README.md`](../security/waf/README.md).
 
 Quand tous les profiles seront prêts :
 

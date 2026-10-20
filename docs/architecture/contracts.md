@@ -107,7 +107,7 @@ Sonde métier : toutes les `CANARY_INTERVAL_SECONDS` (5 s par défaut), elle obt
 
 Une transaction est un **succès** uniquement si `payment-api` répond `201` avec `status = COMPLETED`. Tout le reste (erreur réseau, `401`, `5xx`, `REJECTED`) est un **échec**.
 
-Cibles configurables : `AUTH_URL` et `PAYMENT_URL`. Pour le POC, elles pointent directement vers `auth-service` et `payment-api` ; elles passeront par le WAF quand celui-ci sera en place.
+Cibles configurables : `AUTH_URL` et `PAYMENT_URL`, toutes deux `http://waf:8080/api`. Le canary passe par le WAF comme un vrai client (WAF, frontal, puis API) : il mesure aussi l'effet d'une attaque ou d'un blocage au WAF. Il arrive par le réseau interne `app-net`, avec sa propre IP : un ban du trafic externe ne le touche pas.
 
 ### `POST /probe`
 
@@ -203,3 +203,15 @@ Tout autre chemin `/api/` renvoie 404. Corps limité à 16 Ko (413 au-delà).
 |---|---|---|
 | `ml_anomaly_score` | gauge | Score d'anomalie courant, de 0 (normal) à 1 (anormal) |
 | `ml_anomaly_threshold` | gauge | Seuil au-delà duquel une alerte est envoyée à la remédiation |
+
+### WAF : bannissement (utilisé par remediation-engine)
+
+Détails et justification : [`security/waf/README.md`](../../security/waf/README.md).
+
+| Étape | Action |
+|---|---|
+| Bannir | Écrire `/banlist/<nom>.conf` (volume `waf-banlist`), une ligne `deny <ip>;` par adresse, mode 644 |
+| Appliquer | `POST http://socket-proxy-rw:2375/containers/resilience-alpha-waf-1/kill?signal=HUP` (rechargement à chaud, sans coupure) |
+| Lever | Supprimer le fichier, puis renvoyer `HUP` |
+
+Réponse du WAF à une adresse bannie : `403`. Les bans sont temporaires (5 minutes conseillées), l'expiration est gérée par remediation-engine.

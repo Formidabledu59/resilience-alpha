@@ -133,7 +133,6 @@ Ollama n'est **pas** un conteneur : il tourne en natif, sur le PC Hôte (`http:/
 ```
 resilience-alpha/
 ├── docker-compose.yml        Définition de tous les conteneurs et réseaux
-├── docker-compose.dev.yml    Surcharge de développement (frontal sur 127.0.0.1:8081, hors démonstration)
 ├── .env.example              Modèle de variables (valeurs factices)
 ├── .github/                  CODEOWNERS, template de PR, CI
 ├── services/                 Développement — un dossier par microservice
@@ -259,18 +258,13 @@ docker compose --profile app --profile security --profile ia --profile remediati
 
 Procédure détaillée, vérifications et dépannage : [`infra/README.md`](infra/README.md).
 
-Chaîne de paiement, frontal et dashboard de supervision :
+Chaîne applicative complète (WAF, frontal, API, base, canary, dashboard), profile `app` :
 
 ```bash
-docker compose up -d --build postgres auth-service payment-api canary frontend dashboard
+docker compose --profile app up -d --build
 ```
 
-Tant que le WAF n'est pas configuré, le frontal n'est joignable que sur le réseau interne. Pour l'ouvrir sur le PC Hôte pendant le développement (jamais en démonstration) :
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build frontend
-# puis http://127.0.0.1:8081
-```
+Le WAF publie le port 80 sur `WAF_BIND_IP`. En démonstration : `192.168.137.1`, avec le point d'accès actif **avant** Docker. Sans point d'accès (développement sur le PC Hôte seul) : `WAF_BIND_IP=127.0.0.1` dans `.env`.
 
 Ou via Ansible (déploiement complet avec initialisation de Vault et chargement des dashboards) :
 
@@ -309,30 +303,29 @@ Procédure pas à pas, sous Windows (PowerShell, à la racine du dépôt). Le d�
 
 1. Démarrer **Docker Desktop** et attendre qu'il soit prêt.
 2. Créer le fichier `.env` avec des secrets aléatoires : bloc PowerShell de [`infra/README.md`](infra/README.md), étape 2. À faire une seule fois.
-3. Lancer la stack d'observabilité, puis la chaîne de paiement, le frontal et le dashboard :
+3. Choisir l'adresse du WAF dans `.env` :
+   - démonstration : `WAF_BIND_IP=192.168.137.1`, et activer le point d'accès `RESILIENCE-G16` **avant** Docker Desktop ;
+   - développement sur le PC Hôte seul : `WAF_BIND_IP=127.0.0.1`.
+4. Lancer la stack d'observabilité, puis la chaîne applicative (profile `app`) :
 
    ```powershell
    docker compose up -d
-   docker compose up -d --build postgres auth-service payment-api canary frontend dashboard
+   docker compose --profile app up -d --build
    ```
 
-4. Attendre environ une minute, puis vérifier que tout est `healthy` :
+5. Attendre environ une minute, puis vérifier que tout est `healthy` :
 
    ```powershell
    docker compose ps -a
    ```
 
-   12 conteneurs attendus : les 6 de l'observabilité, postgres, auth-service, payment-api, canary, frontend et dashboard.
+   13 conteneurs attendus : les 6 de l'observabilité, puis waf, frontend, auth-service, payment-api, postgres, canary et dashboard.
 
 ### 7.2 Utiliser le frontal de paiement
 
-Le frontal est prévu pour être servi par le WAF sur `http://192.168.137.1`. **Tant que le WAF n'est pas configuré**, on l'ouvre sur le PC Hôte avec la surcharge de développement :
+Le frontal est servi **uniquement à travers le WAF**, comme pour un vrai client.
 
-```powershell
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build frontend
-```
-
-1. Ouvrir **http://127.0.0.1:8081**.
+1. Ouvrir **http://192.168.137.1** (démonstration) ou **http://127.0.0.1** (développement, `WAF_BIND_IP=127.0.0.1`).
 2. Se connecter avec l'utilisateur fictif **`demo`**. Son mot de passe est celui généré dans `.env` :
 
    ```powershell
@@ -546,7 +539,7 @@ Limites déjà identifiées côté frontal :
 
 - **HTTPS** : hors périmètre du laboratoire (réseau local, pas de nom de domaine ni de certificat). En production : TLS au WAF, redirection 80 vers 443 et en-tête HSTS.
 - **Droits sur les comptes** : tout utilisateur connecté peut débiter n'importe quel compte de démonstration. En production : chaque compte serait rattaché à son titulaire et contrôlé par payment-api.
-- **Rate-limit du frontal** : la clé est l'adresse du client vu par nginx. Derrière le WAF, il faudra utiliser l'en-tête `X-Forwarded-For` (module realip), sinon tous les clients partageront la même limite.
+- **IP réelle des clients masquée par Docker Desktop** : sous Windows, le trafic qui entre par le port publié du WAF apparaît avec l'IP de la passerelle Docker (`edge-net`), pas avec celle du client. Bannir « l'IP source » coupe donc tout le trafic externe pendant la durée du ban ; le canary, interne, n'est pas touché et prouve la reprise. Les bans sont temporaires. Sur un hôte Linux avec Docker natif, l'IP réelle serait conservée. Détails : [`security/waf/README.md`](security/waf/README.md).
 
 ---
 

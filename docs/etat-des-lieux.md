@@ -1,23 +1,23 @@
 # État des lieux du projet
 
-> Mis à jour le 19 octobre 2026, après la PR #6. À tenir à jour à chaque PR importante.
+> Mis à jour le 19 octobre 2026, avec le WAF (branche `feat/cyber-waf`). À tenir à jour à chaque PR importante.
 > Échéances : gel du code **jeudi 17h**, dépôt des livrables **jeudi 23h59**.
 
 ## En résumé
 
-**Avancement estimé : environ 30 %.** La fondation est en place et vérifiée : infrastructure, observabilité, chaîne de paiement, frontal et dashboard.
-Reste le **coeur de la démonstration** : WAF, attaque, détection ML et remédiation automatique, puis la gouvernance et les livrables.
+**Avancement estimé : environ 35 %.** La fondation est en place et vérifiée : infrastructure, observabilité, chaîne de paiement, frontal, dashboard et WAF.
+Reste le **coeur de la démonstration** : attaque, détection ML et remédiation automatique, puis la gouvernance et les livrables.
 
 | Bloc | Poids estimé | Avancement | Contribution |
 |---|---|---|---|
 | Infrastructure et observabilité | 15 % | 90 % | 13,5 % |
 | Services métier, frontal, dashboard | 15 % | 90 % | 13,5 % |
-| Cybersécurité (WAF, Vault, SOC, attaques) | 15 % | 10 % | 1,5 % |
+| Cybersécurité (WAF, Vault, SOC, attaques) | 15 % | 40 % | 6 % |
 | IA (détection, assistant RAG) | 15 % | 0 % | 0 % |
 | Remédiation et boucle de reprise | 15 % | 10 % | 1,5 % |
-| Gouvernance (EBIOS RM, PCA/PRA, NIS2/DORA) | 10 % | 5 % | 0,5 % |
+| Gouvernance (EBIOS RM, PCA/PRA, NIS2/DORA) | 10 % | 10 % | 1 % |
 | Livrables (dossier, présentation, clip) | 15 % | 0 % | 0 % |
-| **Total** | | | **environ 30 %** |
+| **Total** | | | **environ 35 %** |
 
 Les poids sont une estimation de l'équipe, pas le barème officiel.
 
@@ -33,11 +33,12 @@ Les poids sont une estimation de l'équipe, pas le barème officiel.
 | Chaîne de paiement | Contrat d'API, `auth-service` (JWT), `payment-api` (Postgres, transaction atomique), `canary` (sonde et transaction de contrôle), 11 tests | #5 |
 | Frontal de paiement | Connexion, virement, soldes, pages RGPD et CGU, 404, SEO, accessibilité, anti-spam, mesure d'audience sans cookie, 12 tests | #6 |
 | Dashboard de supervision | Phases Avant / Pendant / Remédiation / Après, chiffres clés, courbes, cibles, incidents, transaction de contrôle, 11 tests | #6 |
-| Grafana | Dashboards « Vue globale » et « Frontal et sécurité » | #3, #6 |
+| WAF | ModSecurity + OWASP CRS (injection SQL, XSS, accès fichiers, Log4Shell, scanners bloqués), rate-limit, liste de ban rechargée à chaud, journaux JSON dans Loki, canary passant par le WAF | `feat/cyber-waf` |
+| Grafana | Dashboards « Vue globale » et « Frontal et sécurité » (dont blocages WAF et règles déclenchées) | #3, #6, `feat/cyber-waf` |
 | CI | 5 jobs verts : gitleaks, yamllint, pytest, front (frontend), front (dashboard) | #1, #6 |
 | Documentation | README, `infra/README.md`, `docs/architecture/contracts.md`, README de chaque service développé, procédure d'utilisation | toutes |
 
-Vérifié au runtime : 12 conteneurs `healthy`, transaction `COMPLETED` depuis le navigateur et en ligne de commande, `canary_up = 1`, logs de tous les services dans Loki, aucune adresse IP dans les journaux du frontal.
+Vérifié au runtime : 13 conteneurs `healthy`, attaques bloquées au WAF, ban puis levée du ban sans coupure du canary, transaction `COMPLETED` depuis le navigateur et en ligne de commande, `canary_up = 1`, logs de tous les services dans Loki, aucune adresse IP dans les journaux du frontal.
 
 ---
 
@@ -47,19 +48,19 @@ Vérifié au runtime : 12 conteneurs `healthy`, transaction `COMPLETED` depuis l
 
 | Tâche | Détail | Pilier |
 |---|---|---|
-| WAF | `security/waf/nginx.conf` : proxy vers frontend, auth-service et payment-api, `/healthz`, rate-limit, inclusion de la liste de ban (volume `waf-banlist`), logs ModSecurity en JSON. Puis basculer le canary sur le WAF (`AUTH_URL` et `PAYMENT_URL` = `http://waf:8080`) | cyber |
-| Attaque DoS | `attack/dos/` : cible en paramètre, refus de toute cible hors `192.168.137.0/24` | cyber |
+| IP réelle au WAF | Vérifier depuis le PC Attaquant (point d'accès actif) quelle IP voit le WAF : passerelle Docker ou IP réelle. Voir `security/waf/README.md` | cyber, infra |
+| Attaque DoS | `attack/dos/` : cible en paramètre, refus de toute cible hors `192.168.137.0/24`. À calibrer pour **dégrader réellement** payment-api malgré le rate-limit du WAF (`WAF_RATE_LIMIT`) et du frontal, sinon il n'y a pas d'incident à détecter | cyber |
 | Détecteur ML | Collecte des métriques sous trafic nominal, entraînement Isolation Forest (`ml/training/`), service `ml/detector` (score toutes les 5 s, `ml_anomaly_score` et `ml_anomaly_threshold` dans `/metrics`, webhook signé HMAC) | ia |
 | Moteur de remédiation | Webhooks HMAC (ml-detector) et bearer (Alertmanager), liste blanche de playbooks, `GET /incidents` (contrat dans `contracts.md`), journalisation dans Loki | infra, dev |
-| Playbooks Ansible | `ban_ip.yml` (écrit dans `waf-banlist` puis recharge le WAF via socket-proxy-rw), `restart_api.yml`, `verify.yml` (attend `canary_up == 1` puis `POST /probe`) | infra |
+| Playbooks Ansible | `ban_ip.yml` (contrat de ban dans `contracts.md` : fichier dans `waf-banlist`, puis `HUP` via socket-proxy-rw, ban temporaire), `restart_api.yml`, `verify.yml` (attend `canary_up == 1` puis `POST /probe`). Permissions du volume `waf-banlist` à régler pour l'utilisateur 10001 | infra |
 | Scénario de bout en bout | `tests/e2e/resilience_scenario.py`, puis répétition réelle depuis le PC Attaquant | dev, infra |
 
 ### Priorité 2 : compléter le visible et la sécurité
 
 | Tâche | Détail | Pilier |
 |---|---|---|
-| Dashboard sécurité | Blocages ModSecurity dans Grafana, règles SOC (`security/soc-rules/`) | cyber |
-| Scénario d'injection | `attack/sqli/` : tentative bloquée par le WAF, tracée dans le SOC | cyber |
+| Règles SOC | `security/soc-rules/` : alertes sur les blocages WAF (les panneaux Grafana existent déjà) | cyber |
+| Scénario d'injection | `attack/sqli/` : script de démonstration (le blocage par le WAF fonctionne déjà, règle 942100) | cyber |
 | Vault | `config.hcl`, `init.sh` (sans afficher de secret), lecture de `JWT_SECRET` et des identifiants de base | cyber |
 | Durcissement documenté | `security/hardening.md` | cyber |
 | Vérification mobile | Contrôle à la main du frontal et du dashboard sur téléphone | dev |
@@ -93,7 +94,7 @@ Vérifié au runtime : 12 conteneurs `healthy`, transaction `COMPLETED` depuis l
 
 Cinq chantiers indépendants, menés en parallèle grâce au contrat d'API et aux métriques déjà en place :
 
-1. WAF et scripts d'attaque
+1. Scripts d'attaque et vérification de l'IP réelle sur le réseau du groupe
 2. Détecteur ML
 3. Moteur de remédiation et playbooks
 4. Scénario de bout en bout, puis Vault et dashboard sécurité
@@ -105,6 +106,8 @@ Cinq chantiers indépendants, menés en parallèle grâce au contrat d'API et au
 
 - **HTTPS** hors périmètre du laboratoire (pas de domaine ni de certificat) : documenté comme limite.
 - **Droits sur les comptes** : tout utilisateur connecté peut débiter n'importe quel compte de démonstration.
-- **Rate-limit du frontal** : derrière le WAF, il faudra utiliser `X-Forwarded-For`, sinon tous les clients partagent la même limite.
+- **IP réelle masquée par Docker Desktop** : le WAF voit la passerelle Docker pour tout le trafic externe. Un ban coupe donc tout l'externe pendant sa durée ; le canary interne n'est pas touché.
+- **WAF sur `192.168.137.1`** : si le point d'accès n'est pas actif avant Docker, le WAF reste à l'état `Created`. En développement : `WAF_BIND_IP=127.0.0.1`.
+- **Règle CRS 920350 exclue** (Host en adresse IP) : justifié dans `security/waf/crs-exclusions.conf`.
 - **npm 10** (fourni avec Node 22) plante sur les dépendances de vitest 5 : npm 11.21.0 est épinglé dans les Dockerfile et la CI.
 - **PowerShell 5.1** abîme les guillemets imbriqués passés à un programme externe : préférer des scripts versionnés (exemple : `tests/e2e/transaction_curl.sh`).

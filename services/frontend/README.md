@@ -56,9 +56,6 @@ Les tests et le build tournent dans le conteneur Node du projet (le npm 10 livr�
 docker run --rm -v "${PWD}/services/frontend:/app" -v resilience-fe-nm:/app/node_modules -w /app node:22.23.3-alpine3.24 sh -c "npm install -g npm@11.21.0 && npm ci && npm test && npm run build"
 ```
 
-Avant la mise en place du WAF, le frontal peut être ouvert sur le PC Hôte avec la surcharge de développement (publication sur `127.0.0.1:8081` uniquement) :
+Le frontal n'a aucun port publié : on l'ouvre toujours à travers le WAF, sur `http://192.168.137.1` (démonstration) ou `http://127.0.0.1` avec `WAF_BIND_IP=127.0.0.1` dans `.env` (développement sur le PC Hôte seul).
 
-```powershell
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build frontend
-# puis http://127.0.0.1:8081
-```
+Le nginx du frontal fait confiance à l'en-tête `X-Real-IP` envoyé par le WAF (réseaux Docker privés `172.16.0.0/12`) : ses limites et ses journaux s'appliquent au vrai client, pas au WAF.
