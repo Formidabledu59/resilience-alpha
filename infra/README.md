@@ -177,7 +177,7 @@ Les services applicatifs sont rangés dans des profiles :
 | Profile | Services | État |
 |---|---|---|
 | `app` | waf, frontend, auth-service, payment-api, canary, dashboard, postgres | **Prêt** : démarrable et vérifié |
-| `security` | vault | Configuration à écrire (`config.hcl` vide) |
+| `security` | vault, vault-init | **Prêt** : Vault initialisé et seedé par `vault-init`, secrets lus par auth-service et payment-api (voir `security/vault/README.md`) |
 | `ia` | ml-detector, assistant-rag | Code à écrire |
 | `remediation` | remediation-engine, socket-proxy-rw | Code à écrire |
 

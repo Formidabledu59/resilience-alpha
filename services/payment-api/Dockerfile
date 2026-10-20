@@ -9,7 +9,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py .
+COPY main.py vault_client.py .
 
 # Utilisateur non-root (uid 10001, cohérent avec docker-compose.yml)
 RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin app
