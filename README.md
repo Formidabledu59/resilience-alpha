@@ -446,6 +446,7 @@ Détails : [`assistant-rag/README.md`](assistant-rag/README.md).
 | Durcissement | Conteneurs non-root, systèmes de fichiers en lecture seule si possible, capacités Linux réduites, réseaux internes isolés |
 | Moindre privilège | Accès Docker de la remédiation filtré par proxy, assistant RAG sans privilèges |
 | Exposition réseau | Seul le WAF est publié sur le réseau du groupe |
+| Accès back-office | Reconnaissance faciale (caméra USB + IA légère sur le PC Hôte) avant le mot de passe, état signalé par un ESP8266 (consigne additionnelle 1). Voir [`biometrics/`](biometrics/) |
 | Frontal et dashboard | En-têtes de sécurité (CSP stricte, anti-iframe), aucune ressource externe, rate-limit et champ piège anti-spam, aucun secret dans le navigateur |
 | Données personnelles | Page RGPD, aucun cookie ni traceur, mesure d'audience par journaux serveur sans adresse IP, conservation 7 jours |
 

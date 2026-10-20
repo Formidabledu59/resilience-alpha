@@ -2,6 +2,7 @@
 
 > Mis à jour le 20 octobre 2026, avec Vault (branche `feat/cyber-vault`). À tenir à jour à chaque PR importante.
 > Échéances : gel du code **jeudi 17h**, dépôt des livrables **jeudi 23h59**.
+> **Consigne additionnelle 1 (20/10)** : authentification du back-office par reconnaissance faciale + ESP8266 (POC logiciel fait, matériel à tester). Voir [[exigence-biometrie-esp8266]] et `biometrics/`.
 
 ## En résumé
 
@@ -36,6 +37,7 @@ Les poids sont une estimation de l'équipe, pas le barème officiel.
 | WAF | ModSecurity + OWASP CRS (injection SQL, XSS, accès fichiers, Log4Shell, scanners bloqués), rate-limit, liste de ban rechargée à chaud, journaux JSON dans Loki, canary passant par le WAF | `feat/cyber-waf` |
 | Vault | Secrets `jwt_secret` et `postgres_password` dans Vault (KV v2), init idempotent sans secret affiché, politique lecture seule + token de service, lus par auth-service et payment-api | `feat/cyber-vault` |
 | SOC | Règles de détection (ruler Loki) sur les blocages WAF et échecs de connexion, alertes vers Alertmanager (vérifié : inactive -> pending -> firing) ; `security/hardening.md` | `feat/cyber-soc` |
+| Biométrie back-office (consigne add. 1) | **POC logiciel** : passerelle native (OpenCV LBPH, habilitations, blocage), firmware ESP8266 (compile OK), flux identifiant→visage→mot de passe dans le dashboard. 33 tests. Matériel (caméra, ESP) à tester | `feat/cyber-biometrie` |
 | Grafana | Dashboards « Vue globale » et « Frontal et sécurité » (dont blocages WAF et règles déclenchées) | #3, #6, `feat/cyber-waf` |
 | CI | 5 jobs verts : gitleaks, yamllint, pytest, front (frontend), front (dashboard) | #1, #6 |
 | Documentation | README, `infra/README.md`, `docs/architecture/contracts.md`, README de chaque service développé, procédure d'utilisation | toutes |
