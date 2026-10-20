@@ -7,6 +7,7 @@ import jwt
 from fastapi.testclient import TestClient
 
 os.environ.setdefault("JWT_SECRET", "cle-de-test-hs256-de-plus-de-32-octets")
+os.environ.setdefault("POSTGRES_PASSWORD", "mot-de-passe-bdd-de-test")
 
 from main import JWT_ALGORITHM, app  # noqa: E402
 

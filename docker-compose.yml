@@ -61,6 +61,8 @@ volumes:
   grafana-data:
   postgres-data:
   vault-data:
+  vault-init-out:   # clés d'unseal + root token (jamais dans le dépôt)
+  vault-token:      # token de service écrit par vault-init, lu par auth-service / payment-api
   rag-index:
   waf-banlist:      # rw pour remediation-engine, ro pour waf
 
@@ -248,18 +250,25 @@ services:
     read_only: true
     cap_drop: [ALL]
     environment:
-      # POC : utilisateurs fictifs en mémoire, pas de base. JWT_SECRET passera par Vault plus tard.
+      # JWT_SECRET est lu depuis Vault si le token de service est présent (profile security),
+      # sinon depuis l'environnement (profile app seul). Voir services/auth-service/vault_client.py.
       VAULT_ADDR: ${VAULT_ADDR:?VAULT_ADDR manquant dans .env}
+      VAULT_TOKEN_FILE: /vault-token/service-token
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET manquant dans .env}
       AUTH_DEMO_PASSWORD: ${AUTH_DEMO_PASSWORD:?AUTH_DEMO_PASSWORD manquant dans .env}
       AUTH_CANARY_PASSWORD: ${AUTH_CANARY_PASSWORD:?AUTH_CANARY_PASSWORD manquant dans .env}
     tmpfs:
       - /tmp
+    volumes:
+      - vault-token:/vault-token:ro   # token de service écrit par vault-init (vide si Vault absent)
     networks: [app-net, data-net]
     depends_on:
       vault:
         condition: service_healthy
         required: false   # profile "security", peut être absent
+      vault-init:
+        condition: service_completed_successfully
+        required: false   # attend la fin du dépôt des secrets si Vault est là
     healthcheck: *fastapi-healthcheck
 
   payment-api:
@@ -270,7 +279,9 @@ services:
     read_only: true
     cap_drop: [ALL]
     environment:
+      # JWT_SECRET et POSTGRES_PASSWORD lus depuis Vault si disponible, sinon l'environnement.
       VAULT_ADDR: ${VAULT_ADDR:?VAULT_ADDR manquant dans .env}
+      VAULT_TOKEN_FILE: /vault-token/service-token
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET manquant dans .env}   # vérifie les tokens d'auth-service
       POSTGRES_HOST: postgres
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB manquant dans .env}
@@ -278,12 +289,17 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant dans .env}
     tmpfs:
       - /tmp
+    volumes:
+      - vault-token:/vault-token:ro
     networks: [app-net, data-net]
     depends_on:
       postgres:
         condition: service_healthy
       vault:
         condition: service_healthy
+        required: false
+      vault-init:
+        condition: service_completed_successfully
         required: false
     healthcheck: *fastapi-healthcheck
 
@@ -411,6 +427,31 @@ services:
       <<: *healthcheck-timing
       # Sain dès que le processus répond, même scellé ou non initialisé
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8200/v1/sys/health?standbyok=true&sealedcode=200&uninitcode=200"]
+
+  # Initialise / descelle Vault et y dépose les secrets, puis s'arrête. Idempotent.
+  vault-init:
+    profiles: [security]
+    image: hashicorp/vault:2.1.1
+    # root : conteneur d'init, doit écrire dans des volumes neufs (propriété root) et
+    # rendre le token lisible par l'uid 10001 des services. S'arrête aussitôt après.
+    user: "0:0"
+    cap_drop: [ALL]
+    cap_add: [CHOWN]   # seule capacité nécessaire : chown du token vers l'uid 10001
+    restart: "no"
+    environment:
+      VAULT_ADDR: http://vault:8200
+      # Valeurs semées dans Vault. Doivent correspondre à celles de postgres / des services.
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET manquant dans .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant dans .env}
+    entrypoint: ["sh", "/vault/init.sh"]
+    volumes:
+      - ./security/vault/init.sh:/vault/init.sh:ro
+      - vault-init-out:/out      # clés d'unseal + root token (hors dépôt)
+      - vault-token:/token       # token de service pour auth-service / payment-api
+    networks: [data-net]
+    depends_on:
+      vault:
+        condition: service_healthy
 
   # =========================================================================
   # Profile "ia" : détection et assistant

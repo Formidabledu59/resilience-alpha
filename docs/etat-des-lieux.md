@@ -1,23 +1,23 @@
 # État des lieux du projet
 
-> Mis à jour le 19 octobre 2026, avec le WAF (branche `feat/cyber-waf`). À tenir à jour à chaque PR importante.
+> Mis à jour le 20 octobre 2026, avec Vault (branche `feat/cyber-vault`). À tenir à jour à chaque PR importante.
 > Échéances : gel du code **jeudi 17h**, dépôt des livrables **jeudi 23h59**.
 
 ## En résumé
 
-**Avancement estimé : environ 35 %.** La fondation est en place et vérifiée : infrastructure, observabilité, chaîne de paiement, frontal, dashboard et WAF.
+**Avancement estimé : environ 38 %.** La fondation est en place et vérifiée : infrastructure, observabilité, chaîne de paiement, frontal, dashboard, WAF et Vault.
 Reste le **coeur de la démonstration** : attaque, détection ML et remédiation automatique, puis la gouvernance et les livrables.
 
 | Bloc | Poids estimé | Avancement | Contribution |
 |---|---|---|---|
 | Infrastructure et observabilité | 15 % | 90 % | 13,5 % |
 | Services métier, frontal, dashboard | 15 % | 90 % | 13,5 % |
-| Cybersécurité (WAF, Vault, SOC, attaques) | 15 % | 40 % | 6 % |
+| Cybersécurité (WAF, Vault, SOC, attaques) | 15 % | 55 % | 8 % |
 | IA (détection, assistant RAG) | 15 % | 0 % | 0 % |
 | Remédiation et boucle de reprise | 15 % | 10 % | 1,5 % |
 | Gouvernance (EBIOS RM, PCA/PRA, NIS2/DORA) | 10 % | 10 % | 1 % |
 | Livrables (dossier, présentation, clip) | 15 % | 0 % | 0 % |
-| **Total** | | | **environ 35 %** |
+| **Total** | | | **environ 38 %** |
 
 Les poids sont une estimation de l'équipe, pas le barème officiel.
 
@@ -34,11 +34,12 @@ Les poids sont une estimation de l'équipe, pas le barème officiel.
 | Frontal de paiement | Connexion, virement, soldes, pages RGPD et CGU, 404, SEO, accessibilité, anti-spam, mesure d'audience sans cookie, 12 tests | #6 |
 | Dashboard de supervision | Phases Avant / Pendant / Remédiation / Après, chiffres clés, courbes, cibles, incidents, transaction de contrôle, 11 tests | #6 |
 | WAF | ModSecurity + OWASP CRS (injection SQL, XSS, accès fichiers, Log4Shell, scanners bloqués), rate-limit, liste de ban rechargée à chaud, journaux JSON dans Loki, canary passant par le WAF | `feat/cyber-waf` |
+| Vault | Secrets `jwt_secret` et `postgres_password` dans Vault (KV v2), init idempotent sans secret affiché, politique lecture seule + token de service, lus par auth-service et payment-api | `feat/cyber-vault` |
 | Grafana | Dashboards « Vue globale » et « Frontal et sécurité » (dont blocages WAF et règles déclenchées) | #3, #6, `feat/cyber-waf` |
 | CI | 5 jobs verts : gitleaks, yamllint, pytest, front (frontend), front (dashboard) | #1, #6 |
 | Documentation | README, `infra/README.md`, `docs/architecture/contracts.md`, README de chaque service développé, procédure d'utilisation | toutes |
 
-Vérifié au runtime : 13 conteneurs `healthy`, attaques bloquées au WAF, ban puis levée du ban sans coupure du canary, transaction `COMPLETED` depuis le navigateur et en ligne de commande, `canary_up = 1`, logs de tous les services dans Loki, aucune adresse IP dans les journaux du frontal.
+Vérifié au runtime : 14 conteneurs `healthy` (profiles app + security), secrets `jwt_secret` et `postgres_password` lus depuis Vault (transaction COMPLETED), attaques bloquées au WAF, ban puis levée du ban sans coupure du canary, transaction `COMPLETED` depuis le navigateur et en ligne de commande, `canary_up = 1`, logs de tous les services dans Loki, aucune adresse IP dans les journaux du frontal.
 
 ---
 
@@ -61,7 +62,7 @@ Vérifié au runtime : 13 conteneurs `healthy`, attaques bloquées au WAF, ban p
 |---|---|---|
 | Règles SOC | `security/soc-rules/` : alertes sur les blocages WAF (les panneaux Grafana existent déjà) | cyber |
 | Scénario d'injection | `attack/sqli/` : script de démonstration (le blocage par le WAF fonctionne déjà, règle 942100) | cyber |
-| Vault | `config.hcl`, `init.sh` (sans afficher de secret), lecture de `JWT_SECRET` et des identifiants de base | cyber |
+| ~~Vault~~ | **Fait** (`feat/cyber-vault`) : `config.hcl`, `init.sh` idempotent sans secret affiché, `jwt_secret` et `postgres_password` lus depuis Vault par auth-service et payment-api, repli sur l'env pour le profile app seul | cyber |
 | Durcissement documenté | `security/hardening.md` | cyber |
 | Vérification mobile | Contrôle à la main du frontal et du dashboard sur téléphone | dev |
 

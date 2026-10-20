@@ -17,6 +17,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from prometheus_client import Counter
 from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel, Field, model_validator
+from vault_client import load_secret
 
 JWT_ALGORITHM = "HS256"
 
@@ -57,7 +58,9 @@ def required_env(name: str) -> str:
     return value
 
 
-JWT_SECRET = required_env("JWT_SECRET")
+# Secrets : depuis Vault si disponible, sinon l'environnement (voir vault_client.py)
+JWT_SECRET = load_secret("payment", "jwt_secret", "JWT_SECRET")
+POSTGRES_PASSWORD = load_secret("database", "postgres_password", "POSTGRES_PASSWORD")
 
 
 def connect() -> psycopg.Connection:
@@ -65,7 +68,7 @@ def connect() -> psycopg.Connection:
         host=os.environ.get("POSTGRES_HOST", "postgres"),
         dbname=required_env("POSTGRES_DB"),
         user=required_env("POSTGRES_USER"),
-        password=required_env("POSTGRES_PASSWORD"),
+        password=POSTGRES_PASSWORD,
         connect_timeout=3,
     )
 

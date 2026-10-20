@@ -215,3 +215,14 @@ Détails et justification : [`security/waf/README.md`](../../security/waf/README
 | Lever | Supprimer le fichier, puis renvoyer `HUP` |
 
 Réponse du WAF à une adresse bannie : `403`. Les bans sont temporaires (5 minutes conseillées), l'expiration est gérée par remediation-engine.
+
+### Vault : secrets (lus par auth-service et payment-api)
+
+Détails : [`security/vault/README.md`](../../security/vault/README.md). Moteur KV v2, chemin `secret/`.
+
+| Chemin | Champ | Service |
+|---|---|---|
+| `secret/payment` | `jwt_secret` | auth-service, payment-api |
+| `secret/database` | `postgres_password` | payment-api |
+
+Les services lisent le token de service dans `/vault-token/service-token` (politique `app-ro`, lecture seule), puis récupèrent leurs secrets depuis Vault. Repli sur les variables d'environnement si Vault est absent (profile `app` seul).

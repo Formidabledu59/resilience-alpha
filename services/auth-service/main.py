@@ -14,6 +14,7 @@ import jwt
 from fastapi import FastAPI, HTTPException
 from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel
+from vault_client import load_secret
 
 JWT_ALGORITHM = "HS256"
 TOKEN_TTL_SECONDS = 15 * 60
@@ -41,7 +42,8 @@ def build_users() -> dict[str, tuple[bytes, bytes]]:
     return users
 
 
-JWT_SECRET = required_env("JWT_SECRET")
+# Secret : depuis Vault si disponible, sinon l'environnement (voir vault_client.py)
+JWT_SECRET = load_secret("payment", "jwt_secret", "JWT_SECRET")
 USERS = build_users()
 
 app = FastAPI(title="auth-service")
