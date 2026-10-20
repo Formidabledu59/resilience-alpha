@@ -53,7 +53,7 @@ jobs:
         # Code 5 = aucun test collecté : toléré tant que les services sont en cours d'écriture.
         run: |
           status=0
-          for dir in $(find services ml assistant-rag -type d -name tests -not -path '*/node_modules/*' | xargs -r -n1 dirname | sort -u); do
+          for dir in $(find services ml assistant-rag biometrics -type d -name tests -not -path '*/node_modules/*' | xargs -r -n1 dirname | sort -u); do
             [ -f "$dir/package.json" ] && continue   # application JavaScript : testée par le job front
             echo "::group::pytest $dir"
             if [ -s "$dir/requirements.txt" ]; then pip install -r "$dir/requirements.txt"; fi

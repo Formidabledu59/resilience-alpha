@@ -26,6 +26,15 @@ describe('relais nginx', () => {
     for (const path of used) expect(nginx, path).toContain(`location = ${path} `)
   })
 
+  it('les appels biometriques passent par /api/biometrics/, relaye par nginx', () => {
+    const bio = read('src/biometrics.js')
+    expect(bio).toContain('/api/biometrics')
+    // les endpoints appeles (identify, password, users, enroll)
+    const endpoints = [...bio.matchAll(/call\(`?['`]?(\/[a-z]+)/g)].map((m) => m[1])
+    expect(new Set(endpoints).size).toBeGreaterThanOrEqual(3)
+    expect(read('nginx.conf')).toContain('location /api/biometrics/ ')
+  })
+
   it("le dashboard n'a aucun accès à Docker, Vault ou aux secrets", () => {
     const nginx = read('nginx.conf')
     for (const forbidden of ['socket-proxy', 'docker.sock', 'vault', 'alertmanager']) expect(nginx).not.toContain(forbidden)

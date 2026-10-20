@@ -31,3 +31,9 @@ unseal-keys*
 
 # Journaux
 *.log
+
+# Biométrie : données locales (visages, mots de passe) et artefacts
+biometrics/gateway/data/
+biometrics/**/.venv/
+biometrics/esp8266/.pio/
+biometrics/esp8266/include/secrets.h
