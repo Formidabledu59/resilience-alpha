@@ -38,6 +38,7 @@ Les poids sont une estimation de l'équipe, pas le barème officiel.
 | Vault | Secrets `jwt_secret` et `postgres_password` dans Vault (KV v2), init idempotent sans secret affiché, politique lecture seule + token de service, lus par auth-service et payment-api | `feat/cyber-vault` |
 | SOC | Règles de détection (ruler Loki) sur les blocages WAF et échecs de connexion, alertes vers Alertmanager (vérifié : inactive -> pending -> firing) ; `security/hardening.md` | `feat/cyber-soc` |
 | Biométrie back-office (consigne add. 1) | **POC logiciel** : passerelle native (OpenCV LBPH, habilitations, blocage), firmware ESP8266 (compile OK), flux identifiant→visage→mot de passe dans le dashboard. 33 tests. Matériel (caméra, ESP) à tester | `feat/cyber-biometrie` |
+| Journal des incidents | **remediation-engine (squelette)** : webhooks HMAC et bearer, ouverture et regroupement des incidents, preuves Prometheus + Loki, bilan (types d'attaque, erreurs, défenses, résumé), vérification de la reprise (canary + `POST /probe`), journal d'audit chaîné SHA-256, rapport Markdown. Page « Journal des incidents » dans le dashboard. 22 + 2 tests. Playbooks Ansible à brancher | `feat/dev-journal-incidents` |
 | Grafana | Dashboards « Vue globale » et « Frontal et sécurité » (dont blocages WAF et règles déclenchées) | #3, #6, `feat/cyber-waf` |
 | CI | 5 jobs verts : gitleaks, yamllint, pytest, front (frontend), front (dashboard) | #1, #6 |
 | Documentation | README, `infra/README.md`, `docs/architecture/contracts.md`, README de chaque service développé, procédure d'utilisation | toutes |
@@ -55,7 +56,7 @@ Vérifié au runtime : 14 conteneurs `healthy` (profiles app + security), secret
 | IP réelle au WAF | Vérifier depuis le PC Attaquant (point d'accès actif) quelle IP voit le WAF : passerelle Docker ou IP réelle. Voir `security/waf/README.md` | cyber, infra |
 | Attaque DoS | `attack/dos/` : cible en paramètre, refus de toute cible hors `192.168.137.0/24`. À calibrer pour **dégrader réellement** payment-api malgré le rate-limit du WAF (`WAF_RATE_LIMIT`) et du frontal, sinon il n'y a pas d'incident à détecter | cyber |
 | Détecteur ML | Collecte des métriques sous trafic nominal, entraînement Isolation Forest (`ml/training/`), service `ml/detector` (score toutes les 5 s, `ml_anomaly_score` et `ml_anomaly_threshold` dans `/metrics`, webhook signé HMAC) | ia |
-| Moteur de remédiation | Webhooks HMAC (ml-detector) et bearer (Alertmanager), liste blanche de playbooks, `GET /incidents` (contrat dans `contracts.md`), journalisation dans Loki | infra, dev |
+| Moteur de remédiation | ~~Webhooks, `GET /incidents`, journalisation~~ faits (`feat/dev-journal-incidents`). Reste : exécuteur Ansible des playbooks (`executor` de `engine.py`, voir `services/remediation-engine/README.md`) et Ansible dans l'image | infra, dev |
 | Playbooks Ansible | `ban_ip.yml` (contrat de ban dans `contracts.md` : fichier dans `waf-banlist`, puis `HUP` via socket-proxy-rw, ban temporaire), `restart_api.yml`, `verify.yml` (attend `canary_up == 1` puis `POST /probe`). Permissions du volume `waf-banlist` à régler pour l'utilisateur 10001 | infra |
 | Scénario de bout en bout | `tests/e2e/resilience_scenario.py`, puis répétition réelle depuis le PC Attaquant | dev, infra |
 

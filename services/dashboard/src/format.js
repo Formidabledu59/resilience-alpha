@@ -30,3 +30,17 @@ export function formatScore(score) {
 export function formatTime(seconds) {
   return clean(new Date(seconds * 1000).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
 }
+
+// Horodatage ISO -> "20/10/2026 14:00:05"
+export function formatDateTime(iso) {
+  if (!iso) return '-'
+  return clean(new Date(iso).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'medium' }))
+}
+
+// Durée en secondes -> "45 s", "3 min 05 s"
+export function formatDuration(seconds) {
+  if (seconds === null || seconds === undefined) return '-'
+  const total = Math.round(seconds)
+  if (total < 90) return `${total} s`
+  return `${Math.floor(total / 60)} min ${String(total % 60).padStart(2, '0')} s`
+}

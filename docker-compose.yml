@@ -65,6 +65,7 @@ volumes:
   vault-token:      # token de service écrit par vault-init, lu par auth-service / payment-api
   rag-index:
   waf-banlist:      # rw pour remediation-engine, ro pour waf
+  remediation-journal:  # journal des incidents (JSON Lines chaîné SHA-256), écrit par remediation-engine
 
 secrets:
   # Alertmanager ne lit pas les variables d'environnement : le token lui est
@@ -520,7 +521,9 @@ services:
     cap_drop: [ALL]
     environment:
       PROMETHEUS_URL: http://prometheus:9090        # vérifie la reprise via la métrique du canary
+      LOKI_URL: http://loki:3100                    # preuves de l'incident : blocages WAF, échecs de connexion
       CANARY_URL: http://canary:8000                # demande une transaction de contrôle
+      JOURNAL_PATH: /journal/incidents.jsonl        # trace d'audit des incidents (volume remediation-journal)
       DOCKER_HOST: tcp://socket-proxy-rw:2375       # jamais docker.sock en direct
       WAF_CONTAINER: resilience-alpha-waf-1
       ANSIBLE_CONFIG: /ansible/ansible.cfg
@@ -530,6 +533,7 @@ services:
       - ./infra/ansible:/ansible:ro
       # Le Dockerfile doit créer /banlist avec le propriétaire 10001 pour que le volume soit inscriptible
       - waf-banlist:/banlist
+      - remediation-journal:/journal
     tmpfs:
       - /tmp
     networks: [obs-net, admin-net]   # jamais app-net

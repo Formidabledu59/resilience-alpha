@@ -167,6 +167,8 @@ Tout autre chemin `/api/` renvoie 404. Corps limité à 16 Ko (413 au-delà).
 | `/api/prometheus/query_range` | `prometheus:9090/api/v1/query_range` | GET |
 | `/api/canary/probe` | `canary:8000/probe` | POST (6 par minute) |
 | `/api/remediation/incidents` | `remediation-engine:8000/incidents` | GET |
+| `/api/remediation/journal/verify` | `remediation-engine:8000/journal/verify` | GET |
+| `/api/remediation/incidents/inc-AAAA-MM-JJ-NNN/report` | `remediation-engine:8000/incidents/<id>/report` | GET (identifiant contrôlé par une expression régulière) |
 
 ---
 
@@ -174,7 +176,7 @@ Tout autre chemin `/api/` renvoie 404. Corps limité à 16 Ko (413 au-delà).
 
 ### remediation-engine : `GET /incidents?limit=10`
 
-`200` : liste des incidents, du plus récent au plus ancien.
+`200` : liste des incidents, du plus récent au plus ancien (`limit` de 1 à 100). Chaque incident est l'état complet tenu dans le journal d'audit (voir [`services/remediation-engine/README.md`](../../services/remediation-engine/README.md)). Champs minimaux :
 
 ```json
 [
@@ -196,6 +198,44 @@ Tout autre chemin `/api/` renvoie 404. Corps limité à 16 Ko (413 au-delà).
 ```
 
 `status` : `OPEN` | `REMEDIATING` | `VERIFYING` | `CLOSED` | `FAILED`. Un incident n'est `CLOSED` qu'après une transaction de contrôle réussie.
+
+Champs du bilan (état des lieux de l'incident), ajoutés à chaque mise à jour :
+
+| Champ | Contenu |
+|---|---|
+| `category`, `category_label`, `severity` | `attaque_applicative`, `dos`, `reconnaissance`, `force_brute`, `indisponibilite`, `anomalie`, `autre` |
+| `alerts[]` | `name`, `source`, `auth`, `at`, `summary`, `fingerprint` (Alertmanager) |
+| `evidence.opening`, `evidence.closing` | `metrics` (canari, latence p95, 5xx, débit, avec les pires valeurs de la fenêtre), `waf` (`blocked_403`, `rate_limited_429`, `rules[]`, `clients[]`), `auth_failures` |
+| `attack_types[]` | `label`, `count`, `rules` : familles de règles OWASP CRS déclenchées |
+| `errors[]` | `type` (`HTTP 403`, `HTTP 429`, `HTTP 401`, `HTTP 5xx`, `Échec canari`), `count`, `meaning`, `detail` |
+| `defenses[]` | `layer`, `action`, `result` |
+| `steps[].kind` | `detection`, `analysis`, `action`, `verification`, `info` |
+| `summary` | `what_happened`, `impact`, `defense`, `outcome`, `durations` |
+
+### remediation-engine : journal et rapport
+
+| Endpoint | Réponse |
+|---|---|
+| `GET /incidents/{id}` | L'incident, `404` si inconnu |
+| `GET /incidents/{id}/report` | Rapport Markdown (`text/markdown`), `404` si inconnu |
+| `GET /journal/verify` | `{"ok": true, "entries": 42, "last_hash": "..."}` ou `{"ok": false, "entries": 12, "broken_at_line": 13}` |
+
+### remediation-engine : `POST /webhook/ml` (envoyé par ml-detector)
+
+```json
+{ "score": 0.91, "threshold": 0.7, "detected_at": "2026-10-20T14:00:00+00:00", "features": { "latency_p95": 1.2 } }
+```
+
+| En-tête | Valeur |
+|---|---|
+| `X-Resilience-Timestamp` | Heure d'envoi, secondes Unix |
+| `X-Resilience-Signature` | `sha256=` + HMAC-SHA256 hexadécimal de `"<timestamp>.<corps brut>"` avec `REMEDIATION_HMAC_SECRET` |
+
+`202 {"incident": "inc-..."}` si la signature est valide et date de moins de 5 minutes, `401` sinon, `422` si `score` ou `threshold` manque.
+
+### remediation-engine : `POST /webhook/alertmanager`
+
+Format webhook standard d'Alertmanager, en-tête `Authorization: Bearer <REMEDIATION_BEARER_TOKEN>`. Une alerte `firing` ouvre un incident (ou rejoint l'incident actif de même catégorie), une alerte `resolved` ajoute une étape à l'incident concerné.
 
 ### ml-detector : métriques
 
