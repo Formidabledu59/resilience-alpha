@@ -1,0 +1,4 @@
+streamlit==1.42.2
+langchain-ollama==0.2.3
+langchain-core==0.3.75
+numpy==2.2.6
