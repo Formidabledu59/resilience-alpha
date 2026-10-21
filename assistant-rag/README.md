@@ -2,7 +2,7 @@
 
 Assistant des opérateurs (RAG), **en lecture seule**. Interface Streamlit publiée sur
 **`http://127.0.0.1:8501`** (PC Hôte uniquement, réseau `ui-net`). Il répond aux questions en
-s'appuyant sur les documents de [`docs/`](../../docs/) (runbooks, architecture, PCA/PRA,
+s'appuyant sur les documents de [`docs/`](../docs/) (runbooks, architecture, PCA/PRA,
 gouvernance) et un modèle local servi par **Ollama** (natif, hors Docker, ≤ 8B).
 
 > Lecture seule stricte : aucun accès à Docker, Vault ou au moteur de remédiation. Il aide à
