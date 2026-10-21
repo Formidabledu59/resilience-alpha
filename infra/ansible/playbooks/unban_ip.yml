@@ -1,0 +1,27 @@
+# Lève le ban d'un incident : supprime son fichier de ban, puis recharge le WAF (HUP).
+# Appelé par remediation-engine à l'expiration du ban (5 minutes par défaut).
+#
+# Variable attendue : incident_id
+- name: Lever le ban d'un incident
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Vérifier l'identifiant d'incident
+      ansible.builtin.assert:
+        that:
+          - incident_id is match('^inc-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{3}$')
+
+    - name: Supprimer le fichier de ban
+      ansible.builtin.file:
+        path: "{{ waf_banlist_dir }}/incident-{{ incident_id }}.conf"
+        state: absent
+
+    - name: Recharger le WAF à chaud (HUP via socket-proxy-rw)
+      ansible.builtin.uri:
+        url: "{{ docker_api_url }}/containers/{{ waf_container }}/kill?signal=HUP"
+        method: POST
+        status_code: 204
+
+    - name: Résultat
+      ansible.builtin.debug:
+        msg: "RESULT: ban de l'incident {{ incident_id }} levé"

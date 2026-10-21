@@ -1,0 +1,38 @@
+# Vérifie la reprise métier : canary_up = 1 dans Prometheus, puis une transaction de contrôle réussie.
+# Le moteur de remédiation fait la même vérification en Python (étape par étape dans le journal) ;
+# ce playbook sert à l'opérateur et à la fin de deploy.yml.
+#
+# Depuis le conteneur remediation-engine (noms Docker internes) :
+#   ansible-playbook /ansible/playbooks/verify.yml
+- name: Vérifier la reprise métier
+  hosts: localhost
+  gather_facts: false
+  vars:
+    verify_retries: 36   # 36 x 5 s = 3 minutes
+  tasks:
+    - name: Attendre canary_up = 1 dans Prometheus
+      ansible.builtin.uri:
+        url: "{{ prometheus_url }}/api/v1/query?query=canary_up"
+        return_content: true
+      register: canary
+      until: >-
+        canary.json is defined and canary.json.data.result | length > 0
+        and canary.json.data.result[0].value[1] == '1'
+      retries: "{{ verify_retries }}"
+      delay: 5
+
+    - name: Transaction de contrôle (POST /probe)
+      ansible.builtin.uri:
+        url: "{{ canary_url }}/probe"
+        method: POST
+        return_content: true
+      register: probe
+
+    - name: La transaction de contrôle doit réussir
+      ansible.builtin.assert:
+        that: probe.json.ok
+        fail_msg: "Transaction de contrôle en échec : {{ probe.json.status }} {{ probe.json.detail }}"
+
+    - name: Résultat
+      ansible.builtin.debug:
+        msg: "RESULT: reprise confirmée, transaction {{ probe.json.transaction_id }} {{ probe.json.status }}"

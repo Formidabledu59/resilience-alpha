@@ -15,10 +15,15 @@ Garde-fous (CLAUDE.md) :
 Usage :
   python flood.py --target http://192.168.137.1 --duration 60 --concurrency 50 --rps 0
   (--rps 0 = aucune limite de débit : chaque worker enchaîne les requêtes)
+
+Flood authentifié (--auth demo) : un seul login, puis de vraies transactions de 0,01 EUR
+qui touchent la base (sens alterné d'un worker à l'autre, soldes stables). Le mot de passe
+est lu dans la variable d'environnement ATTACK_PASSWORD, jamais sur la ligne de commande.
 """
 
 import argparse
 import asyncio
+import os
 import sys
 import time
 from collections import Counter
@@ -44,6 +49,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--rps", type=float, default=0, help="Débit cible total en req/s (0 = sans limite)")
     p.add_argument("--path", default=DEFAULT_PATH, help=f"Chemin visé (défaut {DEFAULT_PATH})")
     p.add_argument("--method", default="POST", choices=["GET", "POST"], help="Méthode HTTP")
+    p.add_argument("--auth", metavar="UTILISATEUR",
+                   help="Flood authentifié : utilisateur fictif (ex. demo), mot de passe dans ATTACK_PASSWORD")
     return p.parse_args()
 
 
@@ -69,13 +76,28 @@ class Stats:
 PAYLOAD = {"from_account": "ACC-001", "to_account": "ACC-002", "amount": "1.00", "currency": "EUR"}
 
 
+def payload_for(index: int, authenticated: bool) -> dict:
+    """Corps de la transaction. Authentifié : 0,01 EUR, sens alterné selon le worker."""
+    if not authenticated:
+        return PAYLOAD
+    source, target = ("ACC-001", "ACC-002") if index % 2 == 0 else ("ACC-002", "ACC-001")
+    return {"from_account": source, "to_account": target, "amount": "0.01", "currency": "EUR"}
+
+
+async def login(client: httpx.AsyncClient, base_url: str, username: str, password: str) -> str:
+    """Un seul jeton pour toute l'attaque (la route de login est limitée à 10 par minute)."""
+    response = await client.post(f"{base_url}/api/auth/token", json={"username": username, "password": password})
+    response.raise_for_status()
+    return response.json()["access_token"]
+
+
 async def worker(client: httpx.AsyncClient, url: str, method: str, deadline: float,
-                 stats: Stats, delay: float) -> None:
+                 stats: Stats, delay: float, payload: dict = PAYLOAD) -> None:
     while time.monotonic() < deadline:
         start = time.monotonic()
         try:
             if method == "POST":
-                r = await client.post(url, json=PAYLOAD)
+                r = await client.post(url, json=payload)
             else:
                 r = await client.get(url)
             stats.record(r.status_code, time.monotonic() - start)
@@ -99,7 +121,12 @@ async def run(args: argparse.Namespace, url: str) -> Stats:
     deadline = time.monotonic() + min(args.duration, MAX_DURATION)
     limits = httpx.Limits(max_connections=args.concurrency, max_keepalive_connections=args.concurrency)
     async with httpx.AsyncClient(timeout=10, limits=limits, verify=False) as client:
-        tasks = [worker(client, url, args.method, deadline, stats, delay) for _ in range(args.concurrency)]
+        if args.auth:
+            token = await login(client, args.target.rstrip("/"), args.auth, os.environ["ATTACK_PASSWORD"])
+            client.headers["Authorization"] = f"Bearer {token}"
+            print(f"[AUTH] Jeton obtenu pour {args.auth} : transactions réelles de 0,01 EUR")
+        tasks = [worker(client, url, args.method, deadline, stats, delay, payload_for(i, bool(args.auth)))
+                 for i in range(args.concurrency)]
         await asyncio.gather(*tasks)
     return stats
 
@@ -110,6 +137,9 @@ def main() -> None:
         print(f"[INFO] Durée plafonnée à {MAX_DURATION} s.", file=sys.stderr)
     # BARRIÈRE : refuse toute cible hors du réseau du labo avant d'émettre quoi que ce soit.
     guard_or_exit(args.target)
+    if args.auth and not os.environ.get("ATTACK_PASSWORD"):
+        print("[REFUS] --auth demande la variable d'environnement ATTACK_PASSWORD.", file=sys.stderr)
+        raise SystemExit(2)
     url = args.target.rstrip("/") + args.path
 
     print(f"[LANCEMENT] {args.method} {url} | {args.concurrency} en parallèle | "
