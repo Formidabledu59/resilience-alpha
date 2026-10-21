@@ -51,13 +51,20 @@ export async function queryRange(promql, end = Date.now() / 1000) {
   return body.data.result
 }
 
-// Le moteur de remédiation n'existe pas encore : on renvoie "indisponible" au lieu d'une erreur
+// Journal des incidents. Si le moteur de remédiation n'est pas démarré, on renvoie
+// "indisponible" au lieu d'une erreur, et l'intégrité du journal reste inconnue (null).
 export async function incidents() {
-  try {
-    return { available: true, items: await getJson('/api/remediation/incidents?limit=10') }
-  } catch {
-    return { available: false, items: [] }
-  }
+  const [items, integrity] = await Promise.allSettled([
+    getJson('/api/remediation/incidents?limit=20'),
+    getJson('/api/remediation/journal/verify'),
+  ])
+  if (items.status !== 'fulfilled') return { available: false, items: [], integrity: null }
+  return { available: true, items: items.value, integrity: integrity.status === 'fulfilled' ? integrity.value : null }
+}
+
+// Rapport Markdown d'un incident, téléchargé par un simple lien
+export function reportUrl(incidentId) {
+  return `/api/remediation/incidents/${encodeURIComponent(incidentId)}/report`
 }
 
 export async function probe() {

@@ -11,7 +11,8 @@ Publié sur **`http://127.0.0.1:5173`** uniquement (PC Hôte). Rafraîchissement
 | Chiffres clés | Canari, taux de succès 60 s, latence p95, débit, erreurs 5xx, score d'anomalie | Prometheus |
 | Courbes 15 min | Taux de succès, latence p95, débit, score d'anomalie (avec seuil) | Prometheus (`query_range`) |
 | Services surveillés | Cibles UP / DOWN | Prometheus (`up`) |
-| Incidents | Étapes de remédiation en direct | `remediation-engine` (`GET /incidents`) |
+| Dernier incident | Étapes de remédiation en direct | `remediation-engine` (`GET /incidents`) |
+| Journal des incidents | Pour chaque incident : ce qui s'est passé, impact, erreurs observées, défense, chronologie, issue, rapport Markdown téléchargeable ; intégrité de la chaîne SHA-256 du journal | `remediation-engine` (`GET /incidents`, `/journal/verify`, `/incidents/{id}/report`) |
 | Action principale | « Lancer une transaction de contrôle » | `canary` (`POST /probe`) |
 
 Règles de la phase (`src/status.js`, testées) :
@@ -34,6 +35,8 @@ Les zones « Score d'anomalie » et « Incidents » affichent un message d'atten
 | `/api/prometheus/query_range` | `prometheus:9090/api/v1/query_range` | GET |
 | `/api/canary/probe` | `canary:8000/probe` | POST, 6 par minute |
 | `/api/remediation/incidents` | `remediation-engine:8000/incidents` | GET |
+| `/api/remediation/journal/verify` | `remediation-engine:8000/journal/verify` | GET |
+| `/api/remediation/incidents/inc-AAAA-MM-JJ-NNN/report` | `remediation-engine:8000/incidents/<id>/report` | GET, identifiant contrôlé par expression régulière |
 
 Tout autre chemin `/api/` renvoie 404. Le dashboard n'a aucun accès à Docker, Vault ou aux secrets (vérifié par un test). Le DNS Docker est résolu à chaque requête : nginx démarre même si un service n'existe pas encore.
 

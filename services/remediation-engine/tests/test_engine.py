@@ -1,0 +1,94 @@
+import asyncio
+
+from conftest import FakeObserver, sample_evidence
+from engine import Engine
+from journal import Journal
+
+
+def alert(name="WafBlocagesModSecurity", fingerprint="f1"):
+    return {"name": name, "source": "alertmanager", "auth": "bearer valide", "at": "2026-10-20T14:00:00+00:00",
+            "severity": "warning", "summary": "test", "fingerprint": fingerprint}
+
+
+async def run_incident(tmp_path, observer, probe_result, executor=None, name="WafBlocagesModSecurity"):
+    async def probe():
+        return probe_result
+
+    engine = Engine(Journal(tmp_path / "j.jsonl", echo=False), observer, probe, executor=executor,
+                    verify_timeout=0.05, poll_interval=0.01)
+    incident_id = await engine.receive(alert(name))
+    await asyncio.gather(*engine.tasks)
+    return engine, engine.journal.get(incident_id)
+
+
+def test_incident_cloture_apres_transaction_de_controle(tmp_path, observer):
+    ok = {"ok": True, "status": "COMPLETED", "transaction_id": 7, "latency_seconds": 0.04}
+    engine, incident = asyncio.run(run_incident(tmp_path, observer, ok))
+    assert incident["status"] == "CLOSED"
+    assert incident["closed_at"]
+    assert set(incident["evidence"]) == {"opening", "closing"}
+    actions = [s["action"] for s in incident["steps"]]
+    assert actions[0].startswith("Alerte reçue : WafBlocagesModSecurity")
+    assert "Aucune action corrective nécessaire" in actions  # attaque déjà bloquée par le WAF
+    assert "Transaction de contrôle (POST /probe)" in actions
+    assert engine.journal.verify()["ok"]
+
+
+def test_echec_si_la_transaction_de_controle_echoue(tmp_path, observer):
+    ko = {"ok": False, "status": "ERROR", "detail": "HTTP 503"}
+    _, incident = asyncio.run(run_incident(tmp_path, observer, ko))
+    assert incident["status"] == "FAILED"
+    assert "Intervention humaine requise" in incident["summary"]["outcome"]
+
+
+def test_echec_si_le_canari_ne_revient_pas(tmp_path):
+    observer = FakeObserver(evidence=sample_evidence(canary_min=0.2), canary=(0, 0.2))
+    _, incident = asyncio.run(run_incident(tmp_path, observer, {"ok": True, "status": "COMPLETED"}))
+    assert incident["status"] == "FAILED"
+    assert any(s["action"] == "Canari toujours dégradé" for s in incident["steps"])
+
+
+def test_playbooks_de_la_liste_blanche_executes_et_traces(tmp_path, observer):
+    executed = []
+
+    async def executor(playbook, incident):
+        executed.append(playbook)
+        return "172.23.0.1 bannie pour 5 minutes"
+
+    ok = {"ok": True, "status": "COMPLETED", "transaction_id": 9, "latency_seconds": 0.05}
+    _, incident = asyncio.run(run_incident(tmp_path, observer, ok, executor, name="WafRateLimitSature"))
+    assert executed == ["ban_ip.yml"]
+    assert {"layer": "Moteur de remédiation", "action": "Playbook ban_ip.yml",
+            "result": "172.23.0.1 bannie pour 5 minutes"} in incident["defenses"]
+
+
+def test_alerte_de_meme_categorie_rattachee_a_l_incident_actif(tmp_path, observer):
+    async def scenario():
+        async def probe():
+            return {"ok": True, "status": "COMPLETED"}
+
+        engine = Engine(Journal(tmp_path / "j.jsonl", echo=False), observer, probe, verify_timeout=0.05, poll_interval=0.01)
+        first = await engine.receive(alert(fingerprint="a"))
+        second = await engine.receive(alert(fingerprint="b"))
+        other = await engine.receive(alert("WafRateLimitSature", fingerprint="c"))
+        await asyncio.gather(*engine.tasks)
+        return engine, first, second, other
+
+    engine, first, second, other = asyncio.run(scenario())
+    assert first == second != other
+    assert len(engine.journal.get(first)["alerts"]) == 2
+
+
+def test_incident_interrompu_par_un_redemarrage_est_trace(tmp_path, observer):
+    journal = Journal(tmp_path / "j.jsonl", echo=False)
+    journal.append("incident.opened", {"id": "inc-2026-10-20-001", "status": "REMEDIATING", "category": "dos",
+                                       "category_label": "DoS", "source": "ml-detector",
+                                       "opened_at": "2026-10-20T14:00:05+00:00", "alerts": [], "steps": [], "evidence": {}})
+
+    async def probe():
+        return {}
+
+    engine = Engine(Journal(tmp_path / "j.jsonl", echo=False), observer, probe)
+    incident = engine.journal.get("inc-2026-10-20-001")
+    assert incident["status"] == "FAILED"
+    assert incident["steps"][-1]["action"] == "Moteur redémarré pendant l'incident"
