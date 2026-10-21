@@ -1,0 +1,27 @@
+# Redémarre un service applicatif via socket-proxy-rw (seule opération Docker autorisée avec le HUP).
+# Le redémarrage ne prouve rien : c'est la transaction de contrôle du canary qui confirme la reprise.
+#
+# Variable attendue (passée par -e) :
+#   target_service   service à relancer : payment-api (défaut), auth-service ou frontend
+- name: Redémarrer un service applicatif
+  hosts: localhost
+  gather_facts: false
+  vars:
+    target_service: payment-api
+    restartable: [payment-api, auth-service, frontend]   # liste blanche
+  tasks:
+    - name: Vérifier que le service est autorisé
+      ansible.builtin.assert:
+        that: target_service in restartable
+        fail_msg: "Service non autorisé : {{ target_service }}"
+
+    - name: Redémarrer le conteneur (arrêt propre en 5 s maximum)
+      ansible.builtin.uri:
+        url: "{{ docker_api_url }}/containers/{{ compose_project }}-{{ target_service }}-1/restart?t=5"
+        method: POST
+        status_code: 204
+        timeout: 30
+
+    - name: Résultat
+      ansible.builtin.debug:
+        msg: "RESULT: {{ target_service }} redémarré"

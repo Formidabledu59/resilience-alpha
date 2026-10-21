@@ -20,6 +20,22 @@ python attack/dos/flood.py --target http://192.168.137.1 --duration 60 --concurr
 | `--rps` | Débit total visé en req/s (`0` = sans limite) | 0 |
 | `--path` | Chemin visé | `/api/transactions` |
 | `--method` | `GET` ou `POST` | `POST` |
+| `--auth` | Flood authentifié : utilisateur fictif (ex. `demo`), mot de passe dans `ATTACK_PASSWORD` | désactivé |
+
+### Flood authentifié (recommandé pour dégrader vraiment)
+
+Sans jeton, le flood s'arrête au 401 d'auth-service. Avec `--auth`, le script fait **un seul** login
+(la route de login est limitée à 10/min), puis envoie de **vraies transactions de 0,01 EUR** qui
+traversent toute la chaîne jusqu'à la transaction SQL dans la base. Sens alterné d'un worker à
+l'autre : les soldes des comptes de démo restent stables.
+
+```bash
+export ATTACK_PASSWORD='<mot de passe demo, voir .env du PC Hôte>'
+python attack/dos/flood.py --target http://192.168.137.1 --auth demo --concurrency 200 --duration 90
+```
+
+Le mot de passe se lit dans la variable d'environnement `ATTACK_PASSWORD`, jamais sur la ligne de
+commande (il n'apparaît pas dans l'historique du shell ni dans la liste des processus).
 
 Par défaut, le script martèle `POST /api/transactions`, la route la plus coûteuse (elle traverse le WAF, le frontal, auth-service puis payment-api et la base). Sans jeton valide, payment-api répond 401, mais la charge sur toute la chaîne est réelle : l'objectif est de saturer, pas de réussir des transactions.
 
@@ -40,7 +56,12 @@ Le rate-limit du WAF (`WAF_RATE_LIMIT`, défaut `50r/s` par client) et celui du 
 
 - augmenter `--concurrency` (ex. 100, 200) ;
 - viser une route sans rate-limit strict côté frontal (le WAF a une limite globale, le frontal en a une sur `/api/auth/token` et `/api/transactions`) ;
-- si besoin, relâcher temporairement `WAF_RATE_LIMIT` dans `.env` (ex. `500r/s`) pour la répétition, puis documenter la valeur retenue.
+- **relâcher la limite `/api` du frontal** : c'est elle qui plafonne à 10 r/s par client. Dans le `.env` du PC Hôte, mettre `FRONTEND_API_RATE_LIMIT=1000r/s` et `FRONTEND_API_BURST=2000`, puis `docker compose --profile app up -d` (le frontal relit le template au démarrage) ;
+- si besoin, relâcher aussi `WAF_RATE_LIMIT` dans `.env` (ex. `500r/s`) ;
+- préférer le **flood authentifié** (`--auth demo`) : il atteint payment-api et la base, là où le flood anonyme s'arrête au 401 ;
+- documenter la valeur retenue dans `docs/test-results/`.
+
+> Rappel (Docker Desktop) : tout le trafic externe partage un seul bucket de rate-limit (IP de la passerelle Docker). Les leviers ci-dessus valent pour la démo sur le réseau du groupe ; voir `docs/test-results/calibrage-attaque-dos.md`.
 
 Objectif de calibrage atteint quand : **depuis le PC Attaquant, un lancement fait tomber `canary_up` de façon visible et reproductible.** Noter la commande exacte et les réglages dans `docs/test-results/`.
 

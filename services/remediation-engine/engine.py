@@ -23,6 +23,7 @@ RECOVERY_RATIO = 0.95       # taux de succès du canari considéré comme nomina
 # Liste blanche : seuls ces playbooks peuvent être exécutés, selon la catégorie d'incident.
 # Les attaques applicatives et la reconnaissance sont déjà bloquées par le WAF : pas d'action.
 PLAYBOOKS = {
+    # unban_ip.yml (levée du ban à l'expiration) est appelé par playbooks.AnsibleExecutor
     "dos": ["ban_ip.yml"],
     "force_brute": ["ban_ip.yml"],
     "anomalie": ["ban_ip.yml", "restart_api.yml"],
@@ -133,6 +134,13 @@ class Engine:
                     self._save(incident, "alert.resolved")
                     return incident["id"]
         return None
+
+    async def note(self, incident_id: str, action: str, result: str) -> None:
+        """Action différée (ex. levée d'un ban), tracée même si l'incident est déjà clôturé."""
+        async with self.lock:
+            incident = self._current(incident_id)
+            self._step(incident, action, result, "action")
+            self._save(incident, "remediation.action")
 
     # --- Cycle de vie --------------------------------------------------------------
     def _current(self, incident_id: str) -> dict:

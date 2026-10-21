@@ -237,8 +237,13 @@ services:
     user: "101:101"       # image nginx-unprivileged attendue, écoute sur 8080
     read_only: true
     cap_drop: [ALL]
+    environment:
+      # Rate-limit /api par client (voir .env.example) : à relâcher pour calibrer la démo DoS
+      FRONTEND_API_RATE_LIMIT: ${FRONTEND_API_RATE_LIMIT:-10r/s}
+      FRONTEND_API_BURST: ${FRONTEND_API_BURST:-20}
     tmpfs:
       - /tmp
+      - /etc/nginx/conf.d:uid=101,gid=101   # configuration générée depuis le template au démarrage
     networks: [app-net]
     healthcheck:
       <<: *healthcheck-timing

@@ -13,6 +13,7 @@ import hmac
 import json
 import os
 import re
+import shutil
 import time
 from contextlib import asynccontextmanager
 
@@ -25,6 +26,7 @@ from engine import Engine
 from evidence import Observer
 from incidents import report_markdown
 from journal import Journal, now_iso
+from playbooks import AnsibleExecutor
 
 PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL", "http://prometheus:9090")
 LOKI_URL = os.environ.get("LOKI_URL", "http://loki:3100")
@@ -70,6 +72,10 @@ async def lifespan(app: FastAPI):
         journal = Journal(JOURNAL_PATH)
         app.state.journal = journal
         app.state.engine = Engine(journal, Observer(client, PROMETHEUS_URL, LOKI_URL), probe, verify_timeout=VERIFY_TIMEOUT)
+        # Playbooks exécutés seulement si Ansible est présent (image Docker) : en test, le
+        # journal indique "exécution pas encore branchée".
+        if shutil.which("ansible-playbook"):
+            app.state.engine.executor = AnsibleExecutor(notify=app.state.engine.note)
         JOURNAL_OK.set(1 if journal.verify()["ok"] else 0)
         yield
         for task in list(app.state.engine.tasks):

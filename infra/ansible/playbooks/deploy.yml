@@ -1,0 +1,41 @@
+# Déploiement complet depuis WSL2, à la racine du dépôt :
+#   export ANSIBLE_CONFIG=infra/ansible/ansible.cfg
+#   ansible-playbook infra/ansible/playbooks/deploy.yml
+#
+# Démarre l'observabilité, puis tous les profiles (Vault est initialisé par le service vault-init,
+# les dashboards Grafana sont provisionnés au démarrage). Termine par verify.yml, lancé DANS
+# remediation-engine : c'est le seul endroit qui joint Prometheus et le canary par leur nom interne.
+- name: Déployer la plateforme Resilience Alpha
+  hosts: localhost
+  gather_facts: false
+  vars:
+    repo_root: "{{ playbook_dir }}/../../.."
+    profiles: [app, security, ia, remediation]
+  tasks:
+    - name: Vérifier la présence du fichier .env
+      ansible.builtin.stat:
+        path: "{{ repo_root }}/.env"
+      register: env_file
+
+    - name: Arrêter si .env manque
+      ansible.builtin.assert:
+        that: env_file.stat.exists
+        fail_msg: "Créer .env à partir de .env.example (voir infra/README.md)"
+
+    - name: Démarrer l'observabilité
+      ansible.builtin.command:
+        cmd: docker compose up -d --wait
+        chdir: "{{ repo_root }}"
+      changed_when: true
+
+    - name: Construire et démarrer tous les services
+      ansible.builtin.command:
+        cmd: "docker compose {{ profiles | map('regex_replace', '^', '--profile ') | join(' ') }} up -d --build --wait"
+        chdir: "{{ repo_root }}"
+      changed_when: true
+
+    - name: Vérifier la reprise métier (canary + transaction de contrôle)
+      ansible.builtin.command:
+        cmd: docker compose exec -T remediation-engine ansible-playbook /ansible/playbooks/verify.yml
+        chdir: "{{ repo_root }}"
+      changed_when: false
