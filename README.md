@@ -346,7 +346,8 @@ Ouvrir **http://127.0.0.1:5173** (PC Hôte uniquement).
 - **Bandeau de phase** : Avant (nominal), Pendant (incident ou service dégradé), Remédiation, Après (reprise confirmée).
 - **Chiffres clés et courbes** sur 15 minutes : canari, taux de succès, latence p95, débit, erreurs 5xx, score d'anomalie. Survoler une courbe affiche la valeur ; « Voir les valeurs » ouvre le tableau.
 - **Lancer une transaction de contrôle** : exécute immédiatement une transaction canari et affiche le résultat. C'est la preuve de reprise utilisée en fin de démonstration.
-- Les zones « Score d'anomalie » et « Incidents » restent en attente tant que `ml-detector` et `remediation-engine` ne sont pas déployés.
+- **Journal des incidents** : pour chaque attaque ou panne, l'état des lieux complet (ce qui s'est passé, impact, erreurs observées, défense, chronologie, preuve de reprise), un rapport Markdown téléchargeable et le contrôle d'intégrité du journal (chaîne SHA-256).
+- Les zones « Score d'anomalie », « Dernier incident » et « Journal des incidents » restent en attente tant que `ml-detector` et `remediation-engine` ne sont pas démarrés (profiles `ia` et `remediation`).
 
 ### 7.4 Grafana et Prometheus
 
@@ -418,7 +419,7 @@ Ce composant dispose de droits élevés. Il est donc encadré :
 - ban IP par écriture dans le volume `waf-banlist` (monté en lecture seule dans le WAF), puis reload du WAF ;
 - sur `obs-net` et `admin-net` uniquement, jamais sur `app-net`, sans port publié ;
 - liste blanche des playbooks exécutables ;
-- chaque action est journalisée dans Loki avec horodatage, cause et résultat.
+- chaque incident est tenu dans un **journal d'audit** en ajout seul, chaîné par SHA-256 (volume `remediation-journal`) et recopié dans Loki : alertes reçues, preuves (Prometheus, blocages WAF), types d'attaque et d'erreurs, défenses, chronologie, preuve de reprise. Un rapport Markdown est disponible par incident.
 
 Détails : [`services/remediation-engine/README.md`](services/remediation-engine/README.md).
 

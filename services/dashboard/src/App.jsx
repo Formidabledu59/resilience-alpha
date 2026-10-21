@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { incidents, query, queryRange, QUERIES, RANGE_QUERIES } from './api.js'
 import { formatLatency, formatPercent, formatRate, formatScore, formatTime } from './format.js'
 import { computePhase, scalar, toPoints, toTargets } from './status.js'
+import IncidentJournal from './components/IncidentJournal.jsx'
 import Incidents from './components/Incidents.jsx'
 import LineChart from './components/LineChart.jsx'
 import PhaseBanner from './components/PhaseBanner.jsx'
@@ -15,7 +16,7 @@ const EMPTY = {
   values: {},
   series: {},
   targets: [],
-  incidents: { available: false, items: [] },
+  incidents: { available: false, items: [], integrity: null },
   updatedAt: null,
 }
 
@@ -108,6 +109,8 @@ export default function App() {
         <Targets targets={state.targets} />
         <Incidents data={state.incidents} />
       </div>
+
+      <IncidentJournal data={state.incidents} />
 
       <footer className="muted text-xs">
         {upCount} service(s) sur {state.targets.length} répondent à Prometheus. Console d'administration, accessible
