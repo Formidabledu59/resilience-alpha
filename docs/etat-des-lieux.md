@@ -38,6 +38,7 @@ Les poids sont une estimation de l'équipe, pas le barème officiel.
 | Vault | Secrets `jwt_secret` et `postgres_password` dans Vault (KV v2), init idempotent sans secret affiché, politique lecture seule + token de service, lus par auth-service et payment-api | `feat/cyber-vault` |
 | SOC | Règles de détection (ruler Loki) sur les blocages WAF et échecs de connexion, alertes vers Alertmanager (vérifié : inactive -> pending -> firing) ; `security/hardening.md` | `feat/cyber-soc` |
 | Biométrie back-office (consigne add. 1) | **POC logiciel** : passerelle native (OpenCV LBPH, habilitations, blocage), firmware ESP8266 (compile OK), flux identifiant→visage→mot de passe dans le dashboard. 33 tests. Matériel (caméra, ESP) à tester | `feat/cyber-biometrie` |
+| Répétition Docker (21/10) | **Boucle prouvée en conteneurs** : arrêt de payment-api -> alerte -> `restart_api.yml` (Ansible via socket-proxy-rw) -> canari nominal -> transaction de contrôle COMPLETED -> incident CLOSED, journal chaîné vérifié. Transaction métier OK après reprise. Détail : `docs/test-results/repetition-boucle-reprise.md` | `feat/infra-boucle-reprise` |
 | Boucle de reprise | **ml-detector** (Isolation Forest, score 5 s, webhook HMAC, repli synthétique, 9 tests), **playbooks Ansible** (ban/unban temporaire, restart, verify, deploy) + **exécuteur** branché dans remediation-engine (30 tests), **flood authentifié** et limite `/api` du frontal réglable (calibrage DoS), **scénario e2e** `resilience_scenario.py`. Non rejoué dans Docker (Docker Desktop éteint) | `feat/infra-boucle-reprise` |
 | Journal des incidents | **remediation-engine (squelette)** : webhooks HMAC et bearer, ouverture et regroupement des incidents, preuves Prometheus + Loki, bilan (types d'attaque, erreurs, défenses, résumé), vérification de la reprise (canary + `POST /probe`), journal d'audit chaîné SHA-256, rapport Markdown. Page « Journal des incidents » dans le dashboard. 22 + 2 tests. Playbooks Ansible à brancher | `feat/dev-journal-incidents` |
 | Grafana | Dashboards « Vue globale » et « Frontal et sécurité » (dont blocages WAF et règles déclenchées) | #3, #6, `feat/cyber-waf` |
@@ -56,7 +57,7 @@ Vérifié au runtime : 14 conteneurs `healthy` (profiles app + security), secret
 |---|---|---|
 | IP réelle au WAF | Vérifier depuis le PC Attaquant (point d'accès actif) quelle IP voit le WAF : passerelle Docker ou IP réelle. Voir `security/waf/README.md` | cyber, infra |
 | Attaque DoS | `attack/dos/` : cible en paramètre, refus de toute cible hors `192.168.137.0/24`. À calibrer pour **dégrader réellement** payment-api malgré le rate-limit du WAF (`WAF_RATE_LIMIT`) et du frontal, sinon il n'y a pas d'incident à détecter | cyber |
-| Répétition réelle | Démarrer la stack complète dans Docker, lancer `tests/e2e/resilience_scenario.py` depuis le PC Attaquant, vérifier l'incident de bout en bout et **calibrer le DoS** jusqu'à une chute reproductible de `canary_up` | dev, infra, cyber |
+| Calibrage DoS + chemin ML | La boucle est prouvée en Docker via l'arrêt d'un service (chemin TargetDown). Reste à **calibrer le DoS** sur le réseau du groupe pour déclencher le **détecteur ML** (service dégradé sans arrêt), puis rejouer `resilience_scenario.py` depuis le PC Attaquant | cyber, ia, infra |
 
 ### Priorité 2 : compléter le visible et la sécurité
 
