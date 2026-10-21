@@ -6,7 +6,7 @@
 
 ## En résumé
 
-**Avancement estimé : environ 57 %.** La fondation est en place et vérifiée : infrastructure, observabilité, chaîne de paiement, frontal, dashboard, WAF, Vault et SOC.
+**Avancement estimé : environ 61 %.** La fondation est en place et vérifiée : infrastructure, observabilité, chaîne de paiement, frontal, dashboard, WAF, Vault et SOC.
 Reste le **coeur de la démonstration** : attaque, détection ML et remédiation automatique, puis la gouvernance et les livrables.
 
 | Bloc | Poids estimé | Avancement | Contribution |
@@ -14,11 +14,11 @@ Reste le **coeur de la démonstration** : attaque, détection ML et remédiation
 | Infrastructure et observabilité | 15 % | 90 % | 13,5 % |
 | Services métier, frontal, dashboard | 15 % | 90 % | 13,5 % |
 | Cybersécurité (WAF, Vault, SOC, attaques) | 15 % | 70 % | 10,5 % |
-| IA (détection, assistant RAG) | 15 % | 45 % | 7 % |
+| IA (détection, assistant RAG) | 15 % | 75 % | 11 % |
 | Remédiation et boucle de reprise | 15 % | 75 % | 11 % |
 | Gouvernance (EBIOS RM, PCA/PRA, NIS2/DORA) | 10 % | 10 % | 1 % |
 | Livrables (dossier, présentation, clip) | 15 % | 0 % | 0 % |
-| **Total** | | | **environ 57 %** |
+| **Total** | | | **environ 61 %** |
 
 Les poids sont une estimation de l'équipe, pas le barème officiel.
 
@@ -39,6 +39,7 @@ Les poids sont une estimation de l'équipe, pas le barème officiel.
 | SOC | Règles de détection (ruler Loki) sur les blocages WAF et échecs de connexion, alertes vers Alertmanager (vérifié : inactive -> pending -> firing) ; `security/hardening.md` | `feat/cyber-soc` |
 | Biométrie back-office (consigne add. 1) | **POC logiciel** : passerelle native (OpenCV LBPH, habilitations, blocage), firmware ESP8266 (compile OK), flux identifiant→visage→mot de passe dans le dashboard. 33 tests. Matériel (caméra, ESP) à tester | `feat/cyber-biometrie` |
 | Répétition Docker (21/10) | **Boucle prouvée en conteneurs** : arrêt de payment-api -> alerte -> `restart_api.yml` (Ansible via socket-proxy-rw) -> canari nominal -> transaction de contrôle COMPLETED -> incident CLOSED, journal chaîné vérifié. Transaction métier OK après reprise. Détail : `docs/test-results/repetition-boucle-reprise.md` | `feat/infra-boucle-reprise` |
+| Assistant RAG | **assistant-rag** : interface Streamlit (`127.0.0.1:8501`), LangChain + Ollama natif, base vectorielle maison (cosinus), index auto depuis `docs/`, lecture seule stricte, repli clair si Ollama absent. 13 tests. Reste : tirer les modèles Ollama et essayer en vrai | `feat/ia-assistant-rag` |
 | Boucle de reprise | **ml-detector** (Isolation Forest, score 5 s, webhook HMAC, repli synthétique, 9 tests), **playbooks Ansible** (ban/unban temporaire, restart, verify, deploy) + **exécuteur** branché dans remediation-engine (30 tests), **flood authentifié** et limite `/api` du frontal réglable (calibrage DoS), **scénario e2e** `resilience_scenario.py`. Non rejoué dans Docker (Docker Desktop éteint) | `feat/infra-boucle-reprise` |
 | Journal des incidents | **remediation-engine (squelette)** : webhooks HMAC et bearer, ouverture et regroupement des incidents, preuves Prometheus + Loki, bilan (types d'attaque, erreurs, défenses, résumé), vérification de la reprise (canary + `POST /probe`), journal d'audit chaîné SHA-256, rapport Markdown. Page « Journal des incidents » dans le dashboard. 22 + 2 tests. Playbooks Ansible à brancher | `feat/dev-journal-incidents` |
 | Grafana | Dashboards « Vue globale » et « Frontal et sécurité » (dont blocages WAF et règles déclenchées) | #3, #6, `feat/cyber-waf` |
@@ -73,7 +74,6 @@ Vérifié au runtime : 14 conteneurs `healthy` (profiles app + security), secret
 
 | Tâche | Détail | Pilier |
 |---|---|---|
-| Assistant RAG | Ollama natif (8B maximum) + LangChain, lecture seule de `docs/`, et `assistant-rag/README.md` (lien déjà présent dans le README) | ia |
 | Gouvernance | EBIOS RM, PCA/PRA (scénarios, RTO/RPO, risques résiduels), analyse NIS2/DORA | gouv |
 | Runbooks et résultats d'essais | `docs/runbooks/`, `docs/test-results/` | gouv |
 | Notebooks ML | `ml/notebooks/`, `ml/README.md` (données, résultats, limites). Ces deux chemins sont déjà liés depuis le README : liens cassés tant qu'ils n'existent pas | ia |
