@@ -6,7 +6,7 @@
 
 ## En résumé
 
-**Avancement estimé : environ 60 %.** La fondation est en place et vérifiée : infrastructure, observabilité, chaîne de paiement, frontal, dashboard, WAF, Vault et SOC.
+**Avancement estimé : environ 57 %.** La fondation est en place et vérifiée : infrastructure, observabilité, chaîne de paiement, frontal, dashboard, WAF, Vault et SOC.
 Reste le **coeur de la démonstration** : attaque, détection ML et remédiation automatique, puis la gouvernance et les livrables.
 
 | Bloc | Poids estimé | Avancement | Contribution |
@@ -18,7 +18,7 @@ Reste le **coeur de la démonstration** : attaque, détection ML et remédiation
 | Remédiation et boucle de reprise | 15 % | 75 % | 11 % |
 | Gouvernance (EBIOS RM, PCA/PRA, NIS2/DORA) | 10 % | 10 % | 1 % |
 | Livrables (dossier, présentation, clip) | 15 % | 0 % | 0 % |
-| **Total** | | | **environ 40 %** |
+| **Total** | | | **environ 57 %** |
 
 Les poids sont une estimation de l'équipe, pas le barème officiel.
 
