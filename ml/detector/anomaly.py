@@ -66,6 +66,25 @@ def synthetic_nominal(n: int = 4000, seed: int = 42) -> np.ndarray:
     return data
 
 
+def with_noise_floor(data: np.ndarray, seed: int = 42) -> np.ndarray:
+    """Garantit à chaque feature une variabilité minimale avant l'entraînement.
+
+    En trafic nominal réel, canary_up et canary_success_ratio valent toujours 1, errors_5xx
+    toujours 0 : une colonne constante est ignorée par l'Isolation Forest (aucune coupe
+    possible), le modèle ne verrait alors ni le canari tomber ni les erreurs monter. Pour
+    chaque colonne plus stable que l'écart-type nominal de référence (FEATURES), on ajoute un
+    bruit gaussien de cet écart-type, puis on remet les bornes physiques.
+    """
+    rng = np.random.default_rng(seed)
+    data = np.array(data, dtype=float, copy=True)
+    for i, (_name, _query, _mean, std) in enumerate(FEATURES):
+        if std > 0 and data[:, i].std() < std:
+            data[:, i] += rng.normal(0.0, std, len(data))
+    data[:, :2] = np.clip(data[:, :2], 0.0, 1.0)
+    data[:, 2:] = np.clip(data[:, 2:], 0.0, None)
+    return data
+
+
 def _raw_scores(model, data: np.ndarray) -> np.ndarray:
     # score_samples : plus haut = plus normal. On inverse pour que "plus haut = plus anormal".
     return -model.score_samples(data)
