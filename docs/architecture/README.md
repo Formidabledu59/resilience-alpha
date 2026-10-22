@@ -27,7 +27,8 @@ Loki (règles SOC) ───────┴─► Alertmanager ─► webhook be
                                                                     remediation-engine
    1. ouvre un incident, rassemble les preuves (Prometheus + Loki)
    2. lance les playbooks Ansible de la liste blanche (ban_ip, restart_api) via socket-proxy-rw
-   3. attend canary_up = 1 et succès ≥ 95 %, puis demande une transaction de contrôle au canary
+   3. attend 3 relevés consécutifs canary_up = 1 (~15 s, tous après l'action), puis demande une transaction
+      de contrôle au canary (réessayée jusqu'à 3 fois si un redémarrage est encore en cours)
    4. clôture (CLOSED) seulement si elle réussit, sinon FAILED ; tout est écrit dans un journal chaîné SHA-256
 ```
 

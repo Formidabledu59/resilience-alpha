@@ -94,6 +94,9 @@ Limites constatées :
 | `ML_ANOMALY_THRESHOLD` | Seuil d'alerte | `0.7` |
 | `MODEL_PATH` | Modèle à charger | `/models/model.joblib` |
 | `ML_INTERVAL_SECONDS`, `ML_ALERT_CONSECUTIVE`, `ML_ALERT_COOLDOWN_SECONDS` | Cadence et anti-rebond | `5`, `3`, `60` |
+| `ML_ALERT_REARM` | Relevés consécutifs sous le seuil avant de pouvoir réalerter | `3` |
+
+**Réarmement** : après une alerte, le détecteur n'en envoie pas d'autre tant que le score n'est pas redescendu sous le seuil pendant `ML_ALERT_REARM` relevés. Les features sont des moyennes sur 1 minute : sans cette règle, la traîne d'une attaque déjà traitée relançait une remédiation inutile chaque minute (constaté en répétition le 22/10). Une attaque qui se poursuit après une remédiation ratée ne réalerte donc pas : l'incident passe `FAILED` et l'escalade est humaine (pas d'acharnement automatique).
 
 ## Tests
 
@@ -101,4 +104,4 @@ Limites constatées :
 cd ml/detector && pip install -r requirements.txt pytest && python -m pytest
 ```
 
-14 tests (+ 6 pour `ml/training` : collecte, lecture du CSV, entraînement complet) : score bas en nominal et haut en DoS, plancher de variabilité sur un nominal réel, `canary_up` pris en compte, dégradation réaliste au-dessus du seuil et flood absorbé en dessous, moins de 5 % de faux positifs sur le nominal, score borné, reproductibilité, signature HMAC conforme au moteur, alerte après 3 relevés, pas d'alerte en nominal ni sur une séquence brève, robustesse si Prometheus est muet.
+16 tests (+ 6 pour `ml/training` : collecte, lecture du CSV, entraînement complet) : score bas en nominal et haut en DoS, plancher de variabilité sur un nominal réel, pas de réalerte tant que le score reste haut, réalerte après retour au calme, `canary_up` pris en compte, dégradation réaliste au-dessus du seuil et flood absorbé en dessous, moins de 5 % de faux positifs sur le nominal, score borné, reproductibilité, signature HMAC conforme au moteur, alerte après 3 relevés, pas d'alerte en nominal ni sur une séquence brève, robustesse si Prometheus est muet.

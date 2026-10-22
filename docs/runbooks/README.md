@@ -25,7 +25,7 @@ Réflexe commun : **la reprise n'est acquise que si une transaction de contrôle
 score ML au-dessus du seuil, pic de `429` au WAF.
 
 **Réponse automatique** : `ml-detector` alerte `remediation-engine` (incident « anomalie »), qui
-bannit la source au WAF (`ban_ip.yml`, seulement si une IP dépasse 100 refus 403/429) puis
+bannit la source au WAF (`ban_ip.yml`, si une IP dépasse 100 refus 403/429 ou 1 000 requêtes sur la fenêtre de l'incident) puis
 relance payment-api (`restart_api.yml`). Si c'est le SOC qui alerte (`WafRateLimitSature`),
 seul le ban est appliqué. Le moteur attend ensuite 3 relevés `canary_up = 1`, puis exécute une
 transaction de contrôle. Ban temporaire (5 min), levé automatiquement.

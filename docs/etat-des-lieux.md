@@ -6,19 +6,19 @@
 
 ## En résumé
 
-**Avancement estimé : environ 70 %.** Toute la plateforme est codée, testée et documentée, et la **boucle de reprise autonome est prouvée en conteneurs** (arrêt de `payment-api`, reprise sans intervention humaine, transaction de contrôle réussie).
-Reste à **calibrer le DoS sur le réseau du groupe** pour que la détection ML déclenche la boucle sur une vraie attaque, puis les livrables.
+**Avancement estimé : environ 76 %.** Toute la plateforme est codée, testée et documentée. **La boucle complète est démontrée sur une vraie attaque** (22/10) : DoS envoyé sur le WAF du point d'accès, **détection par le ML** entraîné sur du trafic réel, ban de l'attaquant et relance par Ansible, transaction de contrôle `COMPLETED`, en 37 à 75 s, **6 essais sur 6** ([répétition générale](test-results/repetition-generale.md)).
+Reste : rejouer l'attaque depuis le **PC Attaquant**, tourner le Clip Chrono, puis les livrables.
 
 | Bloc | Poids estimé | Avancement | Contribution |
 |---|---|---|---|
 | Infrastructure et observabilité | 15 % | 90 % | 13,5 % |
 | Services métier, frontal, dashboard | 15 % | 90 % | 13,5 % |
-| Cybersécurité (WAF, Vault, SOC, attaques) | 15 % | 75 % | 11 % |
-| IA (détection, assistant RAG) | 15 % | 75 % | 11 % |
-| Remédiation et boucle de reprise | 15 % | 75 % | 11 % |
+| Cybersécurité (WAF, Vault, SOC, attaques) | 15 % | 85 % | 13 % |
+| IA (détection, assistant RAG) | 15 % | 85 % | 13 % |
+| Remédiation et boucle de reprise | 15 % | 95 % | 14 % |
 | Gouvernance (EBIOS RM, PCA/PRA, NIS2/DORA) | 10 % | 90 % | 9 % |
 | Livrables (dossier, présentation, clip) | 15 % | 0 % | 0 % |
-| **Total** | | | **environ 70 %** |
+| **Total** | | | **environ 76 %** |
 
 Les poids sont une estimation de l'équipe, pas le barème officiel.
 
@@ -31,7 +31,7 @@ python tests/run_all.py                 # tous les tests (Python 3.11+, Node.js 
 python tests/run_all.py --python-only   # sans Node.js
 ```
 
-Aucun Docker ni service démarré n'est nécessaire : le script installe les dépendances dans `.venv-tests/` (ignoré par Git) et reproduit la CI. **11 suites, 142 tests, toutes vertes** le 22/10 sous Windows. Détail par suite : [README, section 14](../README.md#14-tests).
+Aucun Docker ni service démarré n'est nécessaire : le script installe les dépendances dans `.venv-tests/` (ignoré par Git) et reproduit la CI. **12 suites, 173 tests, toutes vertes** le 22/10 sous Windows. Détail par suite : [README, section 14](../README.md#14-tests).
 
 ---
 
@@ -54,6 +54,7 @@ Aucun Docker ni service démarré n'est nécessaire : le script installe les dé
 | Assistant RAG | Streamlit (`127.0.0.1:8501`), LangChain + Ollama natif, index automatique de `docs/`, lecture seule stricte | #16, #18 |
 | Biométrie back-office (consigne add. 1) | **POC logiciel** : passerelle native (OpenCV LBPH, habilitations, blocage), firmware ESP8266 (compile), flux identifiant -> visage -> mot de passe dans le dashboard | #12, #14 |
 | Gouvernance | EBIOS RM (5 ateliers), PCA/PRA (RTO/RPO, scénarios, risques résiduels), NIS2/DORA, runbooks RB1 à RB7. À relire par l'équipe | #17 |
+| **Répétition générale (22/10)** | Point d'accès actif, modèle ML entraîné sur 20 min de trafic réel, calibrage automatique du DoS (`tests/e2e/calibrate_dos.py`), 4 séries chronométrées : **6/6** sur les deux dernières. 3 défauts trouvés et corrigés : vérification sur métriques antérieures au redémarrage (HTTP 502), réalertes ML en boucle, attaquant non banni quand les limites sont relâchées | `feat/infra-repetition-generale` |
 | Revue face au sujet (22/10) | Vérification raccourcie (3 relevés du canari au lieu de 60 s, pour tenir le Clip Chrono), gouvernance complétée (impact métier d'un arrêt, RTO mesurés, choix de restauration, disponibilité ≠ compromission, applicabilité DORA, [arbitrages et recommandations](governance/recommandations.md)), affirmations non démontrées corrigées, section Contributions, résultats et limites du ML, check-list du jour J (`DEMARRAGE.md` §12) | `chore/revue-sujet` |
 | Tests et calibrage (22/10) | Lanceur `tests/run_all.py` (tous les PC), tests du garde-fou d'attaque et du scénario e2e, correction du scénario e2e et de la feature `canary_up` du détecteur, revue du calibrage ([`calibrage-attaque-dos.md`](test-results/calibrage-attaque-dos.md)), README mis à jour | `chore/etat-tests-docs` |
 
@@ -67,10 +68,10 @@ Vérifié au runtime : 17 conteneurs `healthy` (stack complète), secrets lus de
 
 | Tâche | Détail | Pilier |
 |---|---|---|
-| Calibrer le DoS | Sur `RESILIENCE-G16`, relâcher `FRONTEND_API_RATE_LIMIT` et lancer `resilience_scenario.py` (flood authentifié par défaut) jusqu'à une **vraie dégradation** : un flood absorbé par les rate-limits ne fait pas dépasser le seuil ML (mesures dans [`calibrage-attaque-dos.md`](test-results/calibrage-attaque-dos.md)). Noter les réglages retenus | cyber, ia, infra |
-| IP réelle au WAF | Vérifier depuis le PC Attaquant l'IP vue par le WAF (passerelle Docker attendue). Un ban coupe alors tout l'externe 5 min : à annoncer au jury | cyber, infra |
-| Modèle ML sur trafic réel | 30 min de trafic nominal (`collect.py` puis `train.py`), `ml_model_fallback = 0` : le jury attend des observations constituées par l'équipe | ia |
-| Répétition générale | Check-list `DEMARRAGE.md` §12 : 3 succès d'affilée, **re-mesurer la durée de la boucle** (critère de vérification raccourci le 22/10), tenir le Clip Chrono sous 60 s | tous |
+| Attaque depuis le PC Attaquant | Les essais du 22/10 partaient du PC Hôte. Rejouer depuis le PC Attaquant connecté à `RESILIENCE-G16` (`flood.py --auth demo --concurrency 200`), vérifier l'IP vue par le WAF (passerelle Docker attendue) et que la détection ML se déclenche toujours | cyber, infra |
+| Valider le réglage de démonstration | Limites de débit relâchées (proposé, [`calibrage-attaque-dos.md`](test-results/calibrage-attaque-dos.md)) : décision d'équipe, et l'argument à donner au jury | tous |
+| Clip Chrono | 3 essais sur 6 sous 60 s. PC Attaquant connecté (le point d'accès ne s'éteint plus), économie d'énergie désactivée, plusieurs prises en plan continu | tous |
+| Modèle ML entraîné (fait le 22/10) | `ml/models/model.joblib` n'est pas versionné : sur le PC du jury, refaire `collect.py` (20 min) puis `train.py`, ou copier le fichier | ia |
 
 ### Priorité 2 : essais restants
 
@@ -103,7 +104,8 @@ Vérifié au runtime : 17 conteneurs `healthy` (stack complète), secrets lus de
 - **HTTPS** hors périmètre du laboratoire (pas de domaine ni de certificat) : documenté comme limite.
 - **Droits sur les comptes** : tout utilisateur connecté peut débiter n'importe quel compte de démonstration.
 - **IP réelle masquée par Docker Desktop** : le WAF voit la passerelle Docker pour tout le trafic externe. Un ban coupe donc tout l'externe pendant sa durée ; le canary interne n'est pas touché.
-- **Détection ML** : avec le modèle de repli, seule une dégradation réelle (plusieurs indicateurs ensemble) dépasse le seuil ; un canari en échec seul donne 0,63. Une panne franche reste couverte par l'alerte Prometheus `TargetDown`.
+- **Détection ML** : seule une dégradation réelle (plusieurs indicateurs ensemble) dépasse le seuil ; un canari en échec seul donne 0,67. Une panne franche reste couverte par l'alerte Prometheus `TargetDown`. Aux limites de débit par défaut, l'attaque est absorbée et c'est le SOC qui bannit (le ML ne déclenche pas).
+- **Point d'accès Windows** : il s'éteint après ~5 min sans appareil connecté (économie d'énergie), le WAF devient injoignable. Désactiver l'économie d'énergie avant la démonstration.
 - **WAF sur `192.168.137.1`** : si le point d'accès n'est pas actif avant Docker, le WAF reste à l'état `Created`. En développement : `WAF_BIND_IP=127.0.0.1` (le scénario e2e, lui, exige le point d'accès : le garde-fou refuse `127.0.0.1`).
 - **Règle CRS 920350 exclue** (Host en adresse IP) : justifié dans `security/waf/crs-exclusions.conf`.
 - **npm 10** (fourni avec Node 22) plante sur les dépendances de vitest 5 : npm 11.21.0 est épinglé dans les Dockerfile, la CI et `tests/run_all.py`.

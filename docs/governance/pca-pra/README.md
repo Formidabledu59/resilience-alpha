@@ -54,11 +54,11 @@ ER1, [`../ebios-rm/`](../ebios-rm/)).
 
 > Repères du POC, pas des engagements contractuels. **Critère de vérification modifié le
 > 22/10** : la remédiation n'attend plus que le taux de succès du canari sur 60 s remonte à
-> 95 % (65 s sur les 67 mesurées), mais 3 relevés consécutifs `canary_up = 1` (~15 s) avant la
-> transaction de contrôle. **Nouvelle mesure à faire** en répétition ; ne pas annoncer de
-> chiffre avant.
-> Chemin DoS → détection ML → remédiation : **implémenté, pas encore démontré** (calibrage
-> en cours, [`calibrage-attaque-dos.md`](../../test-results/calibrage-attaque-dos.md)).
+> 95 % (65 s sur les 67 mesurées), mais 3 relevés consécutifs `canary_up = 1` (~15 s), tous
+> postérieurs à l'action, avant la transaction de contrôle (réessayée jusqu'à 3 fois).
+> **Mesuré le 22/10 sur DoS réel, détection ML** ([répétition générale](../../test-results/repetition-generale.md)) :
+> 6 essais réussis sur 6, total de **37 à 75 s** (détection 20 à 51 s, remédiation et vérification
+> 15 à 46 s), très en dessous de l'objectif de 3 minutes.
 
 ---
 
@@ -66,7 +66,7 @@ ER1, [`../ebios-rm/`](../ebios-rm/)).
 
 | Scénario | Détection | Réponse automatique | Preuve de reprise |
 |---|---|---|---|
-| Déni de service applicatif | ml-detector (score ≥ 0,7 sur 3 relevés) | Catégorie « anomalie » : `ban_ip.yml` (si une IP dépasse 100 refus WAF) puis `restart_api.yml` | Canari nominal + `POST /probe`. **Pas encore démontré sur un vrai DoS** |
+| Déni de service applicatif | ml-detector (score ≥ 0,7 sur 3 relevés) | Catégorie « anomalie » : `ban_ip.yml` (IP à plus de 100 refus WAF ou plus de 1 000 requêtes sur la fenêtre) puis `restart_api.yml` | Canari nominal + `POST /probe`. **Démontré le 22/10** ([répétition générale](../../test-results/repetition-generale.md)) |
 | Saturation du WAF | SOC `WafRateLimitSature` (429) | Catégorie « dos » : `ban_ip.yml` seul | Canari nominal + `POST /probe` |
 | Indisponibilité d'un service | Prometheus `TargetDown` | `restart_api.yml` (via socket-proxy-rw) | Canari nominal + `POST /probe`. **Démontré le 21/10** |
 | Attaque applicative (injection) | WAF (403) + SOC | Blocage en amont (aucune action requise) | Service jamais dégradé |
