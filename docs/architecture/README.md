@@ -51,4 +51,4 @@ Seul le WAF est joignable depuis le réseau. Les interfaces d'exploitation ne so
 ## Hors Docker
 
 - **Ollama** (modèle ≤ 8B) tourne en natif, sur le PC Hôte ou le PC délestage IA ; `assistant-rag` l'atteint par `OLLAMA_BASE_URL`.
-- **Passerelle biométrique** (`biometrics/gateway`, port 8700) tourne en natif pour accéder à la caméra ; le dashboard la joint par `host.docker.internal`, le boîtier ESP8266 par le point d'accès.
+- **Passerelle biométrique** (`biometrics/gateway`, port 8700), préparée mais **désactivée par défaut** (`BACKOFFICE_BIOMETRICS=false`) : quand elle est activée, elle tourne en natif pour accéder à la caméra ; le dashboard la joint par `host.docker.internal`, le boîtier ESP8266 par le point d'accès.

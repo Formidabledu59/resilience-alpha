@@ -10,6 +10,7 @@ Tout ce qu'il faut installer et toutes les commandes pour lancer RESILIENCE-ALPH
 | Faire tourner la plateforme sur mon PC | [1](#1-installer-les-outils) à [6](#6-vérifier-que-tout-marche) |
 | Utiliser la plateforme (frontal, dashboard, Grafana) | [guide d'utilisation, README §7](README.md#7-utiliser-et-vérifier-la-plateforme) |
 | Préparer et jouer la démonstration | [9](#9-lancer-la-démonstration-attaque-et-reprise-autonome) et [12](#12-jour-j--check-list-de-la-démonstration-et-du-clip-chrono) |
+| Préparer la soutenance (ordre, diaporama, questions) | [docs/soutenance.md](docs/soutenance.md) |
 
 ### Les adresses à connaître
 
@@ -366,7 +367,7 @@ Le jury note surtout l'**axe 1** (5 points) : attaque depuis le PC Attaquant, d�
      $env_ = (Get-Content .env) -replace '=.*',''; (Get-Content .env.example | Where-Object { $_ -match '^[A-Z_]+=' }) -replace '=.*','' | Where-Object { $_ -notin $env_ }
      ```
 2. Réglages de démonstration dans `.env`, mesurés le 22/10 ([`calibrage-attaque-dos.md`](docs/test-results/calibrage-attaque-dos.md)) :
-   - **pour montrer la détection ML** (proposé) : `WAF_RATE_LIMIT=2000r/s`, `WAF_RATE_BURST=4000`, `FRONTEND_API_RATE_LIMIT=2000r/s`, `FRONTEND_API_BURST=4000`, attaque à concurrence 200 → alerte ML (score 0,78), ban + relance, reprise prouvée en ~23 s ;
+   - **pour montrer la détection ML** (proposé) : `WAF_RATE_LIMIT=2000r/s`, `WAF_RATE_BURST=4000`, `FRONTEND_API_RATE_LIMIT=2000r/s`, `FRONTEND_API_BURST=4000`, attaque à concurrence 200 → alerte ML (score 0,78 à 0,84), ban + relance, reprise prouvée en 37 à 75 s (répétition, 6 essais sur 6), 36 s après l'alerte sur la vidéo du 22/10 ;
    - limites par défaut (50 r/s et 10 r/s) : l'attaque est absorbée, la règle SOC bannit l'attaquant en ~5 s, le ML ne déclenche pas.
 
    Après un changement : `docker compose --profile app up -d waf frontend`.

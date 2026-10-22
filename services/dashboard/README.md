@@ -14,7 +14,7 @@ Publié sur **`http://127.0.0.1:5173`** uniquement (PC Hôte). Rafraîchissement
 | Dernier incident | Étapes de remédiation en direct | `remediation-engine` (`GET /incidents`) |
 | Journal des incidents | Pour chaque incident : ce qui s'est passé, impact, erreurs observées, défense, chronologie, issue, rapport Markdown téléchargeable ; intégrité de la chaîne SHA-256 du journal | `remediation-engine` (`GET /incidents`, `/journal/verify`, `/incidents/{id}/report`) |
 | Action principale | « Lancer une transaction de contrôle » | `canary` (`POST /probe`) |
-| Back-office | Accès protégé par identifiant, **reconnaissance faciale** puis mot de passe ; onglet « Habilitations » (enrôlement des visages) | passerelle biométrique native (`biometrics/gateway`) |
+| Back-office (si `BACKOFFICE_BIOMETRICS=true`, désactivé par défaut) | Accès protégé par identifiant, **reconnaissance faciale** puis mot de passe ; onglet « Habilitations » (enrôlement des visages) | passerelle biométrique native (`biometrics/gateway`) |
 
 Règles de la phase (`src/status.js`, testées) :
 

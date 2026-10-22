@@ -130,7 +130,7 @@ En cas d'échec : `ok: false`, `status` vaut le statut métier ou `ERROR`, `deta
 | `canary_latency_seconds` | histogram | Durée d'une transaction (token compris si renouvelé) |
 | `canary_transactions_total` | counter | `result` = `success` \| `failure` |
 
-`remediation-engine` considère la reprise acquise quand `canary_up == 1` et `canary_success_ratio` est revenu à un niveau nominal, **puis** qu'un `POST /probe` renvoie `ok: true`.
+`remediation-engine` considère la reprise acquise quand `canary_up == 1` sur 3 relevés consécutifs postérieurs à l'action, **puis** qu'un `POST /probe` renvoie `ok: true` (jusqu'à 3 essais). `canary_success_ratio`, calculé sur 60 s, n'est pas utilisé pour cette décision.
 
 ---
 
@@ -172,7 +172,7 @@ Tout autre chemin `/api/` renvoie 404. Corps limité à 16 Ko (413 au-delà).
 
 ---
 
-## Interfaces prévues (attendues par le dashboard)
+## Interfaces consommées par le dashboard (implémentées)
 
 ### remediation-engine : `GET /incidents?limit=10`
 

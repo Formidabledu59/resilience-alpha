@@ -179,7 +179,7 @@ Les services applicatifs sont rangés dans des profiles :
 | `app` | waf, frontend, auth-service, payment-api, canary, dashboard, postgres | **Prêt** : démarrable et vérifié |
 | `security` | vault, vault-init | **Prêt** : Vault initialisé et seedé par `vault-init`, secrets lus par auth-service et payment-api (voir `security/vault/README.md`) |
 | `ia` | ml-detector, assistant-rag | **Prêt** : détecteur ML (modèle de repli si aucun modèle entraîné), assistant RAG (Ollama natif requis pour répondre) |
-| `remediation` | remediation-engine, socket-proxy-rw | **Prêt** : boucle de reprise prouvée le 21/10 ([`repetition-boucle-reprise.md`](../docs/test-results/repetition-boucle-reprise.md)) |
+| `remediation` | remediation-engine, socket-proxy-rw | **Prêt** : boucle de reprise prouvée le 21/10 sur panne ([`repetition-boucle-reprise.md`](../docs/test-results/repetition-boucle-reprise.md)) et le 22/10 sur DoS détecté par le ML, 6/6 ([`repetition-generale.md`](../docs/test-results/repetition-generale.md)) |
 
 Le WAF est dans `app` : il fait partie du chemin applicatif (client ou canary, WAF, frontal, API). Pour la plateforme seule :
 

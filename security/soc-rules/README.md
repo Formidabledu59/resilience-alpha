@@ -20,7 +20,7 @@ Logs (WAF, auth-service) -> Loki -> ruler (ces règles) -> Alertmanager -> remed
 
 | Alerte | Déclencheur | Sévérité |
 |---|---|---|
-| `WafBlocagesModSecurity` | plus de 10 réponses 403 du WAF en 2 min | warning |
+| `WafBlocagesModSecurity` | plus de 10 réponses 403 du WAF en 2 min | warning (se déclenche aussi sur les 403 d'une IP bannie après un DoS : incident « attaque applicative » en double, voir RB3) |
 | `WafRateLimitSature` | plus de 100 réponses 429 du WAF en 2 min | warning |
 | `WafScannerDetecte` | règle CRS 913xxx (scanner) déclenchée | info |
 | `EchecsConnexionRepetes` | plus de 20 échecs d'authentification (401) en 2 min | warning |

@@ -7,7 +7,7 @@
 |---|---|---|
 | [`repetition-boucle-reprise.md`](repetition-boucle-reprise.md) | Répétition de la boucle de reprise en conteneurs (arrêt d'un service) | Reprise autonome prouvée en ~67 s (transaction de contrôle COMPLETED) |
 | [`calibrage-attaque-dos.md`](calibrage-attaque-dos.md) | Calibrage de l'attaque DoS applicative (22/10, point d'accès actif) | Réglages par défaut : WAF absorbe, SOC bannit en ~5 s. Limites relâchées, concurrence 200 : alerte ML (0,78) |
-| [`repetition-generale.md`](repetition-generale.md) | Répétition générale chronométrée, 4 séries de 3 essais (22/10) | **6/6 réussis** sur les deux dernières séries, détection ML, 37 à 75 s ; 3 défauts trouvés et corrigés |
+| [`repetition-generale.md`](repetition-generale.md) | Répétition générale chronométrée, 4 séries de 3 essais (22/10), puis vidéo de démonstration | **6/6 réussis** sur les deux dernières séries, détection ML, 37 à 75 s ; défauts trouvés et corrigés ; vidéo : incident clos 36 s après l'alerte, attaquant banni |
 
 ## Convention
 

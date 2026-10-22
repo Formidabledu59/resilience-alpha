@@ -155,13 +155,14 @@ Avant / Pendant / Remédiation / Après sur le dashboard.
 | Test | Méthode | Résultat | Référence |
 |---|---|---|---|
 | Arrêt d'un service | `docker stop payment-api` | Reprise auto en ~67 s, transaction prouvée (critère de vérification raccourci le 22/10 : à re-mesurer) | `docs/test-results/repetition-boucle-reprise.md` |
-| Attaque DoS | `attack/dos/flood.py` | WAF absorbe ; calibrage réseau à finaliser | `docs/test-results/calibrage-attaque-dos.md` |
+| Attaque DoS | `attack/dos/flood.py`, `tests/e2e/resilience_scenario.py` | Limites par défaut : WAF absorbe, SOC bannit en ~5 s. Limites relâchées : détection ML, ban + relance, reprise prouvée en 37 à 75 s (6/6, attaque depuis le PC Hôte) | `docs/test-results/repetition-generale.md` |
 | Injection SQL / XSS | `attack/sqli/inject.py` | Bloquée (403) par le CRS | `security/waf/README.md` |
 | Ban puis levée au WAF | Écriture banlist + HUP | Trafic coupé puis rétabli, canari non touché | `security/waf/README.md` |
 
-À compléter : rejouer le scénario de bout en bout `tests/e2e/resilience_scenario.py` (sur le PC
-Hôte, attaque vers `192.168.137.1`), avec un DoS calibré pour déclencher le chemin ML.
-Non testés à ce jour : force brute → ban, panne de la base.
+Le scénario de bout en bout a été rejoué le 22/10 (DoS calibré, chemin ML, 6 essais sur 6), puis
+filmé. À compléter : l'attaque lancée depuis le PC Attaquant. Non testés à ce jour : force brute →
+ban, panne de la base. L'arrêt de service (21/10) n'a pas été re-mesuré avec le nouveau critère de
+vérification ; le DoS, si.
 
 ---
 
@@ -170,7 +171,8 @@ Non testés à ce jour : force brute → ban, panne de la base.
 - **Mono-hôte** : pas de haute disponibilité réelle ; une panne du PC Hôte arrête tout. En
   production : plusieurs hôtes, orchestrateur, bascule automatique.
 - **Dépendance à Docker Desktop (Windows)** : IP client masquée, un ban coupe tout l'externe.
-- **Modèle ML sur trafic simulé** : à ré-entraîner sur données réelles.
+- **Modèle ML entraîné sur un court échantillon** (20 minutes de trafic réel, le 22/10) : à
+  ré-entraîner sur un historique long (cycles jour / nuit, pics) en production.
 - **Pas de sauvegarde externalisée** de la base dans le POC (données fictives) : en production,
   sauvegardes régulières testées et réplication.
 

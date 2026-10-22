@@ -43,7 +43,7 @@ Par défaut, le script martèle `POST /api/transactions`, la route la plus coût
 
 Sur le dashboard (http://127.0.0.1:5173) et Grafana, pendant et après :
 
-1. **`canary_up` tombe à 0** (ou taux de succès du canari qui chute) - c'est le signal d'un vrai incident.
+1. **Le taux de succès du canari baisse** (83 % au plus bas le 22/10 ; `canary_up` peut passer ponctuellement à 0) et sa latence explose : c'est le signal d'un vrai incident. Le ML réagit à la combinaison des indicateurs, pas à un seul.
 2. Latence p95 qui monte, erreurs qui apparaissent.
 3. Au WAF : requêtes `429` (rate-limit) si le débit dépasse `WAF_RATE_LIMIT`.
 4. Le détecteur ML dépasse son seuil, la remédiation se déclenche, puis la transaction de contrôle réussit : phase « Après ».
@@ -56,10 +56,9 @@ Le rate-limit du WAF (`WAF_RATE_LIMIT`, défaut `50r/s` par client) et celui du 
 
 - augmenter `--concurrency` (ex. 100, 200) ;
 - viser une route sans rate-limit strict côté frontal (le WAF a une limite globale, le frontal en a une sur `/api/auth/token` et `/api/transactions`) ;
-- **relâcher la limite `/api` du frontal** : c'est elle qui plafonne à 10 r/s par client. Dans le `.env` du PC Hôte, mettre `FRONTEND_API_RATE_LIMIT=1000r/s` et `FRONTEND_API_BURST=2000`, puis `docker compose --profile app up -d` (le frontal relit le template au démarrage) ;
-- si besoin, relâcher aussi `WAF_RATE_LIMIT` dans `.env` (ex. `500r/s`) ;
+- **relâcher les limites de débit** : réglage retenu le 22/10, dans le `.env` du PC Hôte : `WAF_RATE_LIMIT=2000r/s`, `WAF_RATE_BURST=4000`, `FRONTEND_API_RATE_LIMIT=2000r/s`, `FRONTEND_API_BURST=4000`, puis `docker compose --profile app up -d waf frontend` (ils relisent leur template au démarrage), et `--concurrency 200` ;
 - préférer le **flood authentifié** (`--auth demo`) : il atteint payment-api et la base, là où le flood anonyme s'arrête au 401 ;
-- documenter la valeur retenue dans `docs/test-results/`.
+- valeurs retenues et mesures : [`calibrage-attaque-dos.md`](../../docs/test-results/calibrage-attaque-dos.md).
 
 > Rappel (Docker Desktop) : tout le trafic externe partage un seul bucket de rate-limit (IP de la passerelle Docker). Les leviers ci-dessus valent pour la démo sur le réseau du groupe ; voir `docs/test-results/calibrage-attaque-dos.md`.
 

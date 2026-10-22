@@ -63,6 +63,10 @@ corriger la cause (dépendance, configuration), relancer, puis valider par une t
 **Réponse** : ModSecurity (OWASP CRS) bloque en amont ; le service n'est pas dégradé. Aucune
 action corrective n'est nécessaire, l'incident sert à qualifier et tracer.
 
+> Après un ban (RB1), les 403 renvoyés à l'attaquant banni déclenchent aussi
+> `WafBlocagesModSecurity` : un incident « attaque applicative » s'ouvre alors 1 à 3 minutes plus
+> tard. C'est la suite du DoS, pas une injection : le vérifier dans les règles déclenchées.
+
 **Vérification manuelle** :
 1. Dashboard Grafana « Frontal et sécurité » : règles déclenchées, clients bloqués.
 2. Confirmer que `canary_up` est resté à 1 (aucun impact métier).
