@@ -501,9 +501,10 @@ Le script reproduit la CI : chaque dossier qui contient `tests/` est testé avec
 | `services/dashboard` (vitest) | 19 |
 | `biometrics/gateway` | 16 |
 | `assistant-rag` | 13 |
-| `ml/detector` | 12 |
+| `ml/detector` | 14 |
+| `ml/training` | 6 |
 | `services/frontend` (vitest) | 12 |
-| `tests/e2e` (logique du scénario, réseau simulé) | 11 |
+| `tests/e2e` (scénario et calibrage, réseau simulé) | 21 |
 | `services/auth-service`, `services/canary`, `services/payment-api` | 4, 4, 3 |
 
 **Tests sur la stack démarrée** (Docker) :

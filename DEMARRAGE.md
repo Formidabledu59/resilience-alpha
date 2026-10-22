@@ -328,8 +328,19 @@ Le jury note surtout l'**axe 1** (5 points) : attaque depuis le PC Attaquant, d�
    docker compose --profile ia restart ml-detector
    ```
    Dans Prometheus, `ml_model_fallback` doit valoir `0`.
-4. Scénario complet sur le PC Hôte (étape 9) : code de sortie 0, et **chronométrer** du lancement de l'attaque à l'incident `CLOSED`.
-5. Depuis le PC Attaquant, rejouer l'attaque seule en filmant l'écran du PC Hôte : c'est la prise du Clip Chrono.
+4. **Calibrer le DoS** (trouve la charge qui déclenche la détection ML) :
+   ```powershell
+   pip install -r tests/e2e/requirements.txt
+   $env:ATTACK_PASSWORD = (Select-String -Path .env -Pattern '^AUTH_DEMO_PASSWORD=(.*)').Matches[0].Groups[1].Value
+   python tests/e2e/calibrate_dos.py --report docs/test-results/calibrage-attaque-dos.md
+   ```
+   Si aucun palier ne déclenche : relâcher `FRONTEND_API_RATE_LIMIT` / `FRONTEND_API_BURST` dans `.env`, `docker compose --profile app up -d frontend`, relancer.
+5. **Trois essais chronométrés d'affilée**, avec la concurrence retenue :
+   ```powershell
+   python tests/e2e/resilience_scenario.py --runs 3 --concurrency <retenue> --report docs/test-results/repetition-generale.md
+   ```
+   Le tableau indique qui a détecté (ML attendu), les durées et si la boucle tient dans les 60 s du clip.
+6. Depuis le PC Attaquant, rejouer l'attaque seule en filmant l'écran du PC Hôte : c'est la prise du Clip Chrono.
 
 ### Budget de temps du Clip Chrono (60 s, plan continu, sans coupe)
 
