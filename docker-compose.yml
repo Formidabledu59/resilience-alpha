@@ -483,6 +483,7 @@ services:
       REMEDIATION_WEBHOOK_URL: http://remediation-engine:8000/webhook/ml
       REMEDIATION_HMAC_SECRET: ${REMEDIATION_HMAC_SECRET:?REMEDIATION_HMAC_SECRET manquant dans .env}
       ML_ANOMALY_THRESHOLD: ${ML_ANOMALY_THRESHOLD:?ML_ANOMALY_THRESHOLD manquant dans .env}
+      ML_ALERT_CONSECUTIVE: ${ML_ALERT_CONSECUTIVE:-3}   # relevés au-dessus du seuil avant d'alerter
     volumes:
       - ./ml/models:/models:ro
     tmpfs:
