@@ -343,11 +343,15 @@ services:
     user: "101:101"       # nginx-unprivileged : sert le build React et relaie vers Prometheus / remediation-engine
     read_only: true
     cap_drop: [ALL]
+    environment:
+      # Porte biométrique du back-office (consigne additionnelle 1) : préparée, désactivée par défaut
+      BACKOFFICE_BIOMETRICS: ${BACKOFFICE_BIOMETRICS:-false}
     extra_hosts:
       # Passerelle biométrique native du PC Hôte (reconnaissance faciale du back-office)
       - "host.docker.internal:host-gateway"
     tmpfs:
       - /tmp
+      - /etc/nginx/conf.d:uid=101,gid=101   # configuration générée depuis le template au démarrage
     ports:
       - "127.0.0.1:5173:8080"
     networks: [ui-net, obs-net]

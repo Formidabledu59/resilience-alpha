@@ -2,7 +2,7 @@
 
 > Mis à jour le 22 octobre 2026 (revue complète : tests, calibrage, README). À tenir à jour à chaque PR importante.
 > Échéances : gel du code **jeudi 17h**, dépôt des livrables **jeudi 23h59**.
-> **Consigne additionnelle 1 (20/10)** : authentification du back-office par reconnaissance faciale + ESP8266 (POC logiciel fait, matériel à tester). Voir `biometrics/`.
+> **Consigne additionnelle 1 (20/10)** : authentification du back-office par reconnaissance faciale + ESP8266. **Préparée, non activée** (décision d'équipe) : POC logiciel fait, désactivé par défaut (`BACKOFFICE_BIOMETRICS=false`), le dashboard s'affiche sans passerelle. Voir `biometrics/`.
 
 ## En résumé
 
@@ -31,7 +31,7 @@ python tests/run_all.py                 # tous les tests (Python 3.11+, Node.js 
 python tests/run_all.py --python-only   # sans Node.js
 ```
 
-Aucun Docker ni service démarré n'est nécessaire : le script installe les dépendances dans `.venv-tests/` (ignoré par Git) et reproduit la CI. **12 suites, 173 tests, toutes vertes** le 22/10 sous Windows. Détail par suite : [README, section 14](../README.md#14-tests).
+Aucun Docker ni service démarré n'est nécessaire : le script installe les dépendances dans `.venv-tests/` (ignoré par Git) et reproduit la CI. **12 suites, 178 tests, toutes vertes** le 22/10 sous Windows. Détail par suite : [README, section 14](../README.md#14-tests).
 
 ---
 
@@ -52,7 +52,7 @@ Aucun Docker ni service démarré n'est nécessaire : le script installe les dé
 | Remédiation | `remediation-engine` : webhooks HMAC et bearer, incidents, preuves Prometheus + Loki, playbooks Ansible (ban / levée du ban, relance), vérification par transaction de contrôle, journal chaîné SHA-256, rapport Markdown | #13, #15 |
 | **Boucle prouvée en Docker (21/10)** | Arrêt de `payment-api` -> alerte -> `restart_api.yml` -> canari nominal -> transaction de contrôle `COMPLETED` -> incident `CLOSED` en 67 s environ. Détail : [`repetition-boucle-reprise.md`](test-results/repetition-boucle-reprise.md) | #15 |
 | Assistant RAG | Streamlit (`127.0.0.1:8501`), LangChain + Ollama natif, index automatique de `docs/`, lecture seule stricte | #16, #18 |
-| Biométrie back-office (consigne add. 1) | **POC logiciel** : passerelle native (OpenCV LBPH, habilitations, blocage), firmware ESP8266 (compile), flux identifiant -> visage -> mot de passe dans le dashboard | #12, #14 |
+| Biométrie back-office (consigne add. 1) | **POC logiciel, non activé pour la démo** : passerelle native (OpenCV LBPH, habilitations, blocage), firmware ESP8266 (compile), flux identifiant -> visage -> mot de passe dans le dashboard, activable par `BACKOFFICE_BIOMETRICS=true` (désactivé par défaut depuis le 22/10) | #12, #14, `fix/dev-dashboard-sans-biometrie` |
 | Gouvernance | EBIOS RM (5 ateliers), PCA/PRA (RTO/RPO, scénarios, risques résiduels), NIS2/DORA, runbooks RB1 à RB7. À relire par l'équipe | #17 |
 | **Répétition générale (22/10)** | Point d'accès actif, modèle ML entraîné sur 20 min de trafic réel, calibrage automatique du DoS (`tests/e2e/calibrate_dos.py`), 4 séries chronométrées : **6/6** sur les deux dernières. 3 défauts trouvés et corrigés : vérification sur métriques antérieures au redémarrage (HTTP 502), réalertes ML en boucle, attaquant non banni quand les limites sont relâchées | `feat/infra-repetition-generale` |
 | Revue face au sujet (22/10) | Vérification raccourcie (3 relevés du canari au lieu de 60 s, pour tenir le Clip Chrono), gouvernance complétée (impact métier d'un arrêt, RTO mesurés, choix de restauration, disponibilité ≠ compromission, applicabilité DORA, [arbitrages et recommandations](governance/recommandations.md)), affirmations non démontrées corrigées, section Contributions, résultats et limites du ML, check-list du jour J (`DEMARRAGE.md` §12) | `chore/revue-sujet` |
@@ -78,8 +78,7 @@ Vérifié au runtime : 17 conteneurs `healthy` (stack complète), secrets lus de
 | Tâche | Détail | Pilier |
 |---|---|---|
 | Assistant RAG en vrai | `ollama pull llama3.1:8b` et `ollama pull nomic-embed-text`, puis poser des questions sur les runbooks | ia |
-| Biométrie matérielle | Caméra USB et ESP8266 branchés, enrôlement puis accès au back-office | cyber |
-| Passerelle biométrique | Elle écoute sur `0.0.0.0` (README de `biometrics/gateway`), alors que le PC est aussi sur le WiFi du campus. Limiter par une règle du pare-feu Windows au point d'accès, ou lier à `192.168.137.1` après avoir vérifié que le dashboard la joint encore | cyber |
+| Biométrie (non activée) | Hors démonstration : à présenter dans le dossier comme « préparée, non activée » en expliquant pourquoi. Si elle est un jour activée : tester caméra et ESP8266, et ne plus lier la passerelle à `0.0.0.0` | cyber, gouv |
 | Vérification mobile | Frontal et dashboard sur téléphone | dev |
 
 ### Priorité 3 : livrables (jeudi)

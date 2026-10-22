@@ -231,7 +231,15 @@ Après un changement de `.env` : `docker compose --profile ia up -d assistant-ra
 
 ---
 
-## 8. Back-office biométrique (consigne additionnelle 1)
+## 8. Back-office biométrique (consigne additionnelle 1) — optionnel, désactivé par défaut
+
+La biométrie est **préparée mais pas activée** pour la démonstration. Par défaut
+(`BACKOFFICE_BIOMETRICS=false` dans `.env`), le dashboard affiche directement la supervision, sans
+appel à la passerelle : **rien à lancer pour la démo**.
+
+Pour l'activer (caméra USB et ESP8266 branchés) : mettre `BACKOFFICE_BIOMETRICS=true` dans `.env`,
+puis `docker compose --profile app up -d dashboard`. Le dashboard demande alors identifiant, visage
+et mot de passe.
 
 La passerelle tourne **en natif sur le PC Hôte** (accès à la caméra USB), dans un terminal à part :
 
