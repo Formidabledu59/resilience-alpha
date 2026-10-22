@@ -4,6 +4,10 @@ export const ACTIVE_INCIDENT_STATUSES = ['OPEN', 'REMEDIATING', 'VERIFYING']
 const RECOVERY_WINDOW_SECONDS = 10 * 60
 const NOMINAL_RATIO = 0.99
 const INCIDENT_RATIO = 0.8
+// Le taux de succès est calculé sur 60 s : juste après la clôture d'un incident (reprise prouvée
+// par une transaction de contrôle), il reste bas une minute alors que le canari réussit déjà.
+// Pendant ce délai, on se fie au canari et à la clôture de l'incident (répétition du 22/10).
+const STALE_RATIO_SECONDS = 90
 
 export const PHASES = {
   unknown: { tone: 'neutral', icon: 'question', label: 'Données indisponibles', step: null },
@@ -39,12 +43,14 @@ export function toTargets(result) {
 export function computePhase({ prometheusOk, canaryUp, successRatio, incidents = [], now = Date.now() / 1000 }) {
   if (!prometheusOk) return 'unknown'
   if (incidents.some((incident) => ACTIVE_INCIDENT_STATUSES.includes(incident.status))) return 'remediation'
-  if (canaryUp === 0 || (successRatio !== null && successRatio < INCIDENT_RATIO)) return 'incident'
-  if (successRatio !== null && successRatio < NOMINAL_RATIO) return 'degraded'
-  const recentlyClosed = incidents.some(
-    (incident) => incident.status === 'CLOSED' && incident.closed_at && now - Date.parse(incident.closed_at) / 1000 < RECOVERY_WINDOW_SECONDS,
+  if (canaryUp === 0) return 'incident'
+  const closedSince = (seconds) => incidents.some(
+    (incident) => incident.status === 'CLOSED' && incident.closed_at && now - Date.parse(incident.closed_at) / 1000 < seconds,
   )
-  if (recentlyClosed) return 'recovered'
+  if (canaryUp === 1 && closedSince(STALE_RATIO_SECONDS)) return 'recovered'
+  if (successRatio !== null && successRatio < INCIDENT_RATIO) return 'incident'
+  if (successRatio !== null && successRatio < NOMINAL_RATIO) return 'degraded'
+  if (closedSince(RECOVERY_WINDOW_SECONDS)) return 'recovered'
   if (canaryUp === null) return 'unknown'
   return 'nominal'
 }
