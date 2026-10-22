@@ -24,7 +24,7 @@ python attack/dos/flood.py --target http://192.168.137.1 --duration 60 --concurr
 
 ### Flood authentifié (recommandé pour dégrader vraiment)
 
-Sans jeton, le flood s'arrête au 401 d'auth-service. Avec `--auth`, le script fait **un seul** login
+Sans jeton, le flood s'arrête au 401 de payment-api (qui vérifie le JWT lui-même). Avec `--auth`, le script fait **un seul** login
 (la route de login est limitée à 10/min), puis envoie de **vraies transactions de 0,01 EUR** qui
 traversent toute la chaîne jusqu'à la transaction SQL dans la base. Sens alterné d'un worker à
 l'autre : les soldes des comptes de démo restent stables.
@@ -37,7 +37,7 @@ python attack/dos/flood.py --target http://192.168.137.1 --auth demo --concurren
 Le mot de passe se lit dans la variable d'environnement `ATTACK_PASSWORD`, jamais sur la ligne de
 commande (il n'apparaît pas dans l'historique du shell ni dans la liste des processus).
 
-Par défaut, le script martèle `POST /api/transactions`, la route la plus coûteuse (elle traverse le WAF, le frontal, auth-service puis payment-api et la base). Sans jeton valide, payment-api répond 401, mais la charge sur toute la chaîne est réelle : l'objectif est de saturer, pas de réussir des transactions.
+Par défaut, le script martèle `POST /api/transactions`, la route la plus coûteuse (elle traverse le WAF, le frontal puis payment-api, qui vérifie le jeton et écrit en base). Sans jeton valide, payment-api répond 401, mais la charge sur toute la chaîne est réelle : l'objectif est de saturer, pas de réussir des transactions.
 
 ## Ce qu'on doit observer
 

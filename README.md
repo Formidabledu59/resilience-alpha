@@ -7,6 +7,7 @@ Démonstrateur d'une **plateforme de paiement fictive** capable de subir une att
 
 > ⚠️ **Environnement de laboratoire.** Toutes les données, transactions et identités sont fictives. Aucune donnée bancaire réelle. Les actions offensives sont strictement limitées au SI du groupe 16 et aux machines du consortium (réseau `RESILIENCE-G16`).
 
+> **Lancer le projet ?** Suivre le guide [**DEMARRAGE.md**](DEMARRAGE.md) : outils à installer, commandes, tests, démonstration, dépannage.
 > **Où en est le projet ?** Voir l'[état des lieux](docs/etat-des-lieux.md) (fait, à faire, priorités). **Comment l'utiliser ?** Voir la [section 7](#7-utiliser-et-vérifier-la-plateforme).
 
 ---
@@ -56,8 +57,8 @@ flowchart LR
 
     subgraph HOTE["PC Hôte — Docker Compose"]
         WAF["WAF<br/>Nginx + ModSecurity CRS<br/>:8080 non-root"] --> FRONT["Frontal web<br/>React / Tailwind"]
-        WAF --> AUTH["Auth service<br/>FastAPI · JWT"]
-        WAF --> API["Payment API<br/>FastAPI"]
+        FRONT -->|/api/auth| AUTH["Auth service<br/>FastAPI · JWT"]
+        FRONT -->|/api| API["Payment API<br/>FastAPI"]
         AUTH --> DB[("PostgreSQL")]
         API --> DB
         AUTH --> VAULT["Vault<br/>secrets"]
@@ -66,10 +67,11 @@ flowchart LR
 
         PROM["Prometheus"] -->|scrape| CANARY
         PROM --> ML["Détecteur ML<br/>Isolation Forest"]
-        LOKI["Loki"] --> ML
+        LOKI["Loki"]
         ALLOY["Grafana Alloy"] -->|journaux| LOKI
         ALLOY --> PROXYRO["socket-proxy-ro<br/>lecture seule"]
         PROM --> AM["Alertmanager"]
+        LOKI -->|règles SOC| AM
         ML -->|webhook HMAC| REM["Moteur de remédiation<br/>FastAPI + Ansible"]
         AM -->|webhook bearer| REM
         REM -->|métrique canari| PROM
@@ -132,6 +134,7 @@ Ollama n'est **pas** un conteneur : il tourne en natif, sur le PC Hôte (`http:/
 
 ```
 resilience-alpha/
+├── DEMARRAGE.md              Guide pas à pas : installation, lancement, tests, démonstration
 ├── docker-compose.yml        Définition de tous les conteneurs et réseaux
 ├── .env.example              Modèle de variables (valeurs factices)
 ├── .github/                  CODEOWNERS, template de PR, CI
@@ -156,15 +159,22 @@ resilience-alpha/
 │   ├── soc-rules/
 │   └── hardening.md
 ├── attack/                   Cybersécurité — Red Team (exécuté sur le PC Attaquant)
+│   ├── dos/  sqli/           Scénarios, garde-fou de cible commun, tests/
+├── biometrics/               Consigne additionnelle 1 — back-office par reconnaissance faciale
+│   ├── gateway/              Passerelle native (hors Docker, accès caméra)
+│   └── esp8266/              Firmware du boîtier
 ├── ml/                       IA — détection d'anomalies
-│   ├── data/  notebooks/  training/  detector/  models/
+│   ├── training/  detector/  models/ (modèles entraînés, non versionnés)
 ├── assistant-rag/            IA — assistant opérateur
 ├── docs/                     Architecture, runbooks, gouvernance, résultats d'essais
 │   ├── architecture/
 │   ├── runbooks/
 │   ├── governance/           ebios-rm/  pca-pra/  nis2-dora/
-│   └── test-results/
-└── tests/e2e/                Scénario complet automatisé
+│   ├── test-results/
+│   └── etat-des-lieux.md     Avancement et reste à faire
+└── tests/
+    ├── run_all.py            Lance tous les tests du dépôt sur n'importe quel PC
+    └── e2e/                  Scénario complet automatisé
 ```
 
 Chaque dossier contient son propre `README.md` détaillant son fonctionnement.
@@ -185,7 +195,7 @@ Chaque dossier contient son propre `README.md` détaillant son fonctionnement.
 ### PC Attaquant
 
 - Poste distinct du PC Hôte, 8 Go de RAM minimum
-- Python 3.11+ (ou k6) selon les scénarios de [`attack/`](attack/)
+- Python 3.11+ pour les scénarios de [`attack/`](attack/)
 - **Aucun composant défensif**
 
 ### PC délestage IA (optionnel)
@@ -226,6 +236,8 @@ Seuls `socket-proxy-ro` et `socket-proxy-rw` montent `/var/run/docker.sock`, en 
 ---
 
 ## 6. Installation et démarrage
+
+> Version pas à pas, avec les outils à installer et le dépannage : [`DEMARRAGE.md`](DEMARRAGE.md).
 
 ### 6.1 Récupérer le dépôt
 
@@ -354,7 +366,7 @@ Ouvrir **http://127.0.0.1:5173** (PC Hôte uniquement).
 | Outil | Adresse | Ce qu'on y vérifie |
 |---|---|---|
 | Grafana | http://127.0.0.1:3000 | Identifiants : `Select-String -Path .env -Pattern '^GRAFANA_ADMIN_'`. Dashboards « Resilience - Vue globale » (cibles, logs) et « Resilience - Frontal et sécurité » (pages vues, 404, rate-limit, échecs de connexion) |
-| Prometheus | http://127.0.0.1:9090/targets | auth-service, payment-api, canary et la stack d'observabilité **UP**. ml-detector et remediation-engine **DOWN** tant qu'ils ne sont pas développés |
+| Prometheus | http://127.0.0.1:9090/targets | auth-service, payment-api, canary et la stack d'observabilité **UP**. ml-detector et remediation-engine **DOWN** tant que les profiles `ia` et `remediation` ne sont pas démarrés |
 
 Dans Prometheus, la requête `canary_up` doit valoir `1`.
 
@@ -367,7 +379,7 @@ $pass = (Select-String -Path .env -Pattern '^AUTH_DEMO_PASSWORD=(.*)').Matches[0
 docker run --rm --network resilience-alpha_app-net -e PASS=$pass -v "${PWD}/tests/e2e:/e2e:ro" curlimages/curl:8.22.0 sh /e2e/transaction_curl.sh
 ```
 
-Résultat attendu : authentification OK, solde avant et après, puis `Résultat : COMPLETED` (code de sortie 0). Montant et comptes modifiables avec `-e AMOUNT=25.00 -e FROM=ACC-002 -e TO=ACC-001`. Le scénario complet automatisé (`tests/e2e/resilience_scenario.py` : transaction, attaque, reprise, transaction) reste à écrire.
+Résultat attendu : authentification OK, solde avant et après, puis `Résultat : COMPLETED` (code de sortie 0). Montant et comptes modifiables avec `-e AMOUNT=25.00 -e FROM=ACC-002 -e TO=ACC-001`. Le scénario complet automatisé (`tests/e2e/resilience_scenario.py` : transaction, attaque, reprise, transaction) est décrit dans [`tests/e2e/README.md`](tests/e2e/README.md).
 
 ### 7.6 Arrêter
 
@@ -393,6 +405,8 @@ L'état d'avancement du projet (fait, à faire, priorités) est tenu à jour dan
 
 Mode opératoire, cible autorisée et paramètres : voir [`attack/README.md`](attack/README.md).
 
+> **État (22/10)** : la boucle de reprise est prouvée en conteneurs en arrêtant `payment-api` (reprise autonome en 67 s environ, [`docs/test-results/repetition-boucle-reprise.md`](docs/test-results/repetition-boucle-reprise.md)). Avec le DoS, l'attaque doit **réellement dégrader** le service : un flood entièrement absorbé par les limites de débit du WAF et du frontal ne fait pas dépasser le seuil du détecteur ML. Réglages et mesures : [`docs/test-results/calibrage-attaque-dos.md`](docs/test-results/calibrage-attaque-dos.md).
+
 **Scénario complémentaire** : tentative d'injection applicative bloquée par le WAF et remontée dans le SOC. Ce cas illustre une réponse différente : il ne s'agit pas de restaurer la disponibilité mais de bloquer, tracer et qualifier une tentative de compromission.
 
 ---
@@ -400,11 +414,11 @@ Mode opératoire, cible autorisée et paramètres : voir [`attack/README.md`](at
 ## 9. Détection par machine learning
 
 - **Approche** : détection d'anomalies non supervisée (Isolation Forest)
-- **Variables** : débit de requêtes, latence p95, taux d'erreurs 5xx et 4xx, blocages WAF, taux de succès du canari, CPU du service de paiement
+- **Variables** (6, toutes lues dans Prometheus) : taux de succès du canari, canari joignable, latence p95, débit de transactions, taux d'erreurs 5xx, débit de requêtes. Les blocages WAF et le CPU ne sont pas utilisés (non disponibles dans Prometheus, voir `ml/README.md`)
 - **Données d'entraînement** : métriques collectées sous trafic nominal simulé
 - **Sortie** : score d'anomalie exposé dans Prometheus et alerte envoyée au moteur de remédiation au-delà du seuil
 
-Données, préparation, résultats et limites : voir [`ml/README.md`](ml/README.md) et [`ml/notebooks/`](ml/notebooks/).
+Données, préparation, résultats et limites : voir [`ml/README.md`](ml/README.md).
 
 ---
 
@@ -468,15 +482,37 @@ Détails : [`security/hardening.md`](security/hardening.md). Check-list complèt
 
 ## 14. Tests
 
+**Tous les tests unitaires, sur n'importe quel PC** (Windows, Linux, macOS), sans Docker ni stack démarrée. Prérequis : Python 3.11+ et, pour le front, Node.js 22 :
+
 ```bash
-# Tests unitaires d'un service Python
-cd services/payment-api && pytest
+python tests/run_all.py                 # tout (première fois : quelques minutes d'installation)
+python tests/run_all.py --python-only   # sans le front (pas besoin de Node.js)
+python tests/run_all.py --only canary   # une seule suite
+python tests/run_all.py --no-install    # relance rapide
+```
 
-# Tests du frontal et du dashboard (dans le conteneur Node, voir leur README)
-docker run --rm -v "${PWD}/services/frontend:/app" -v resilience-fe-nm:/app/node_modules -w /app node:22.23.3-alpine3.24 sh -c "npm install -g npm@11.21.0 && npm ci && npm test"
+Le script reproduit la CI : chaque dossier qui contient `tests/` est testé avec ses propres dépendances, installées dans `.venv-tests/` (ignoré par Git, rien n'est installé dans le Python du système). Le front est testé avec npm 11.21.0, lancé par `npx` sans toucher au npm du PC.
 
-# Scénario de bout en bout : transaction → attaque → reprise → transaction
-python tests/e2e/resilience_scenario.py
+| Suite | Tests |
+|---|---|
+| `services/remediation-engine` | 26 |
+| `attack` (garde-fou de cible, flood) | 20 |
+| `services/dashboard` (vitest) | 19 |
+| `biometrics/gateway` | 16 |
+| `assistant-rag` | 13 |
+| `ml/detector` | 12 |
+| `services/frontend` (vitest) | 12 |
+| `tests/e2e` (logique du scénario, réseau simulé) | 11 |
+| `services/auth-service`, `services/canary`, `services/payment-api` | 4, 4, 3 |
+
+**Tests sur la stack démarrée** (Docker) :
+
+```bash
+# Une transaction complète (voir 7.5)
+docker run --rm --network resilience-alpha_app-net -e PASS=... -v "${PWD}/tests/e2e:/e2e:ro" curlimages/curl:8.22.0 sh /e2e/transaction_curl.sh
+
+# Scénario de bout en bout, sur le PC Hôte, point d'accès actif : transaction → attaque → reprise → transaction
+ATTACK_PASSWORD='<mot de passe demo>' python tests/e2e/resilience_scenario.py --waf http://192.168.137.1
 ```
 
 Les résultats des essais et des campagnes de chaos engineering sont consignés dans [`docs/test-results/`](docs/test-results/).

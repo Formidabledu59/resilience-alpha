@@ -14,9 +14,9 @@ infra/
 ├── ansible/
 │   ├── ansible.cfg                   Configuration Ansible (voir « Ansible » plus bas)
 │   ├── inventory/hosts.yml           localhost, connexion locale
-│   └── playbooks/                    Playbooks de remédiation
+│   └── playbooks/                    ban_ip, unban_ip, restart_api, verify, deploy
 ├── grafana/
-│   ├── dashboards/                   Dashboards JSON (« Resilience - Vue globale »)
+│   ├── dashboards/                   Dashboards JSON (« Vue globale », « Frontal et sécurité »)
 │   └── provisioning/                 Datasources Prometheus + Loki, provider de dashboards
 ├── loki/loki-config.yml              Stockage des logs (7 jours)
 └── prometheus/
@@ -53,7 +53,7 @@ Les autres services sont rangés dans des **profiles** et ne démarrent que si o
 
    Si la commande affiche `error during connect ... dockerDesktopLinuxEngine`, Docker Desktop n'est pas démarré.
 
-> Le point d'accès mobile `RESILIENCE-G16` n'est **pas** nécessaire pour la stack d'observabilité. Il ne le devient que pour le WAF (profile `security`), et doit alors être actif **avant** de démarrer Docker.
+> Le point d'accès mobile `RESILIENCE-G16` n'est **pas** nécessaire pour la stack d'observabilité. Il ne le devient que pour le WAF (profile `app`), et doit alors être actif **avant** de démarrer Docker.
 
 ## 2. Créer le fichier `.env` avec des secrets aléatoires
 
@@ -112,7 +112,7 @@ Vérifier aussi l'exposition : seuls `127.0.0.1:3000` (Grafana) et `127.0.0.1:90
 | Cible | État attendu |
 |---|---|
 | `prometheus`, `alertmanager`, `loki`, `alloy`, `grafana` | **UP** |
-| `auth-service`, `payment-api`, `canary`, `ml-detector`, `remediation-engine` | **DOWN**, normal : ces services ne sont pas encore développés |
+| `auth-service`, `payment-api`, `canary`, `ml-detector`, `remediation-engine` | **DOWN**, normal tant que leur profile (`app`, `ia`, `remediation`) n'est pas démarré |
 
 **Alerts** (`/alerts`) : l'alerte `TargetDown` est `FIRING` pour les 5 cibles DOWN. C'est attendu pour l'instant.
 
@@ -178,10 +178,10 @@ Les services applicatifs sont rangés dans des profiles :
 |---|---|---|
 | `app` | waf, frontend, auth-service, payment-api, canary, dashboard, postgres | **Prêt** : démarrable et vérifié |
 | `security` | vault, vault-init | **Prêt** : Vault initialisé et seedé par `vault-init`, secrets lus par auth-service et payment-api (voir `security/vault/README.md`) |
-| `ia` | ml-detector, assistant-rag | Code à écrire |
-| `remediation` | remediation-engine, socket-proxy-rw | Code à écrire |
+| `ia` | ml-detector, assistant-rag | **Prêt** : détecteur ML (modèle de repli si aucun modèle entraîné), assistant RAG (Ollama natif requis pour répondre) |
+| `remediation` | remediation-engine, socket-proxy-rw | **Prêt** : boucle de reprise prouvée le 21/10 ([`repetition-boucle-reprise.md`](../docs/test-results/repetition-boucle-reprise.md)) |
 
-Le WAF est dans `app` : il fait partie du chemin applicatif (client ou canary, WAF, frontal, API). Aujourd'hui, seul le profile `app` est utilisable :
+Le WAF est dans `app` : il fait partie du chemin applicatif (client ou canary, WAF, frontal, API). Pour la plateforme seule :
 
 ```powershell
 docker compose --profile app up -d --build
@@ -191,13 +191,13 @@ Le WAF publie le port 80 sur `WAF_BIND_IP` (`.env`). Si le point d'accès `RESIL
 
 Résultat attendu : 13 conteneurs `healthy` (les 6 de l'observabilité et les 7 du profile `app`). Le frontal est sur http://127.0.0.1 (ou http://192.168.137.1), le dashboard sur http://127.0.0.1:5173. Utilisation pas à pas : [README, section 7](../README.md#7-utiliser-et-vérifier-la-plateforme). Détails du WAF : [`security/waf/README.md`](../security/waf/README.md).
 
-Quand tous les profiles seront prêts :
+Stack complète (démonstration) :
 
 ```powershell
 docker compose --profile app --profile security --profile ia --profile remediation up -d --build
 ```
 
-Le profile `security` publie le WAF sur `192.168.137.1:80` : le point d'accès `RESILIENCE-G16` doit être actif **avant** le démarrage de Docker Desktop.
+Le WAF (profile `app`) publie sur `192.168.137.1:80` : le point d'accès `RESILIENCE-G16` doit être actif **avant** le démarrage de Docker Desktop.
 
 ## Ansible
 

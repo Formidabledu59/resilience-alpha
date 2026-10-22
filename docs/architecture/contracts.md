@@ -14,7 +14,7 @@ Toute évolution d'un endpoint ou d'une métrique se fait **d'abord ici**, puis 
 | Format | JSON, montants en chaîne ou nombre décimal à 2 décimales, devise `EUR` uniquement |
 | Données | Exclusivement fictives |
 
-Les services n'ont **aucun port publié** : ils sont joignables uniquement sur `app-net` (puis via le WAF, plus tard).
+Les services n'ont **aucun port publié** : ils sont joignables uniquement sur `app-net` et, depuis l'extérieur, via le WAF puis le frontal (relais `/api`).
 
 ---
 
@@ -138,7 +138,7 @@ En cas d'échec : `ok: false`, `status` vaut le statut métier ou `ERROR`, `deta
 
 | Variable | Services | Rôle |
 |---|---|---|
-| `JWT_SECRET` | auth-service, payment-api | Clé de signature HS256 (Vault plus tard) |
+| `JWT_SECRET` | auth-service, payment-api | Clé de signature HS256 (lue dans Vault, `secret/payment`, repli sur la variable) |
 | `AUTH_DEMO_PASSWORD` | auth-service | Mot de passe de `demo` |
 | `AUTH_CANARY_PASSWORD` | auth-service, canary | Mot de passe de `canary` |
 | `POSTGRES_HOST`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | payment-api | Connexion à la base |

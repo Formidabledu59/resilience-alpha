@@ -41,7 +41,7 @@ La liste des pages est définie une seule fois dans `src/routes.js`. Les tests v
 | Page 404 | `public/404.html`, code HTTP 404 réel |
 | Liens cassés | Test automatique (`tests/routes.test.js`) et tableau des 404 dans Grafana |
 | Validation des formulaires | Côté navigateur (`src/validation.js`, messages accessibles) et côté serveur (payment-api) |
-| Anti-spam | Champ piège invisible + rate-limit nginx (connexion 10/min, API 10/s) |
+| Anti-spam | Champ piège invisible + rate-limit nginx (connexion 10/min, API `FRONTEND_API_RATE_LIMIT` = 10r/s et `FRONTEND_API_BURST` = 20 par défaut, réglables dans `.env` pour le calibrage du DoS) |
 | Outil d'analytics | Mesure d'audience sans cookie : journaux nginx JSON **sans adresse IP**, collectés par Alloy dans Loki, dashboard Grafana « Resilience - Frontal et sécurité » |
 | Un seul CTA | Un seul bouton d'action principal par écran |
 | Typographie | Test automatique (`tests/typography.test.js`) : pas de tiret cadratin ou demi-cadratin, pas de caractère « points de suspension », pas de guillemets courbes, pas d'espace insécable, pas de puces typographiques ni de caractères invisibles |
