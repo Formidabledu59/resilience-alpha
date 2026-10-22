@@ -21,6 +21,8 @@ Réglages (proposés pour la démonstration, voir [`calibrage-attaque-dos.md`](c
 
 **Durées** (6 essais réussis) : détection 20 à 51 s (elle dépend du moment où payment-api cède sous la charge), remédiation + vérification 15 à 46 s, total **37 à 75 s**. **3 essais sur 6 tiennent dans les 60 s du Clip Chrono.** Les deux essais les plus lents ont subi une coupure du point d'accès en plein incident (WAF recréé, canari en échec pendant ~15 s), ce qui n'arrivera pas avec le PC Attaquant connecté au point d'accès.
 
+**Vidéo de démonstration (22/10, après correctifs #24)** : vidéo de démonstration filmée le 22/10 (attaque lancée depuis le PC Hôte) : alerte ML 0,84, attaquant banni 8 s après l'alerte, incident clos 36 s après l'alerte (inc-2026-10-22-026), « Reprise confirmée » affichée dès la clôture. Deux défauts vus au premier tournage ont été corrigés avant : le dashboard restait « Service dégradé » une minute après la clôture, et l'attaquant n'était pas banni quand la détection était rapide (journaux du WAF pas encore arrivés dans Loki).
+
 **Pour le Clip Chrono** : désactiver l'économie d'énergie du point d'accès, garder le PC Attaquant connecté, et filmer plusieurs prises si besoin (chacune en plan continu, sans coupe). Leviers si la boucle reste au-delà de 60 s : `ML_ALERT_CONSECUTIVE=2` (détection ~5 s plus tôt).
 
 ## Essais du 22/10/2026 09:09 UTC

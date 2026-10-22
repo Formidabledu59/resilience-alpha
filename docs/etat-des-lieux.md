@@ -55,10 +55,13 @@ Aucun Docker ni service démarré n'est nécessaire : le script installe les dé
 | Biométrie back-office (consigne add. 1) | **POC logiciel, non activé pour la démo** : passerelle native (OpenCV LBPH, habilitations, blocage), firmware ESP8266 (compile), flux identifiant -> visage -> mot de passe dans le dashboard, activable par `BACKOFFICE_BIOMETRICS=true` (désactivé par défaut depuis le 22/10) | #12, #14, `fix/dev-dashboard-sans-biometrie` |
 | Gouvernance | EBIOS RM (5 ateliers), PCA/PRA (RTO/RPO, scénarios, risques résiduels), NIS2/DORA, runbooks RB1 à RB7. À relire par l'équipe | #17 |
 | **Répétition générale (22/10)** | Point d'accès actif, modèle ML entraîné sur 20 min de trafic réel, calibrage automatique du DoS (`tests/e2e/calibrate_dos.py`), 4 séries chronométrées : **6/6** sur les deux dernières. 3 défauts trouvés et corrigés : vérification sur métriques antérieures au redémarrage (HTTP 502), réalertes ML en boucle, attaquant non banni quand les limites sont relâchées | `feat/infra-repetition-generale` |
+| **Correctifs après tournage (22/10)** | Phase « Après » affichée dès la clôture de l'incident (fenêtre de 90 s, le taux sur 60 s n'est plus bloquant) ; journaux du WAF relus avant de renoncer au ban (`BAN_REFRESH_ATTEMPTS`, `BAN_REFRESH_SECONDS`) ; seuils de ban : 100 refus ou 1 000 requêtes | #24 |
+| **Vidéo de démonstration (22/10)** | `Workshop2026-M2-G16-Demo-POC.mp4` (hors dépôt, 1 min 30, plan continu) : vidéo de démonstration filmée le 22/10 (attaque lancée depuis le PC Hôte) : alerte ML 0,84, attaquant banni 8 s après l'alerte, incident clos 36 s après l'alerte (inc-2026-10-22-026), « Reprise confirmée » affichée dès la clôture. Ne remplace pas le Clip Chrono (attaque depuis le PC Hôte) | — |
+| Soutenance | Déroulé minute par minute, diaporama, plan B, questions probables : [`soutenance.md`](soutenance.md) | `chore/docs-rendu` |
 | Revue face au sujet (22/10) | Vérification raccourcie (3 relevés du canari au lieu de 60 s, pour tenir le Clip Chrono), gouvernance complétée (impact métier d'un arrêt, RTO mesurés, choix de restauration, disponibilité ≠ compromission, applicabilité DORA, [arbitrages et recommandations](governance/recommandations.md)), affirmations non démontrées corrigées, section Contributions, résultats et limites du ML, check-list du jour J (`DEMARRAGE.md` §12) | `chore/revue-sujet` |
 | Tests et calibrage (22/10) | Lanceur `tests/run_all.py` (tous les PC), tests du garde-fou d'attaque et du scénario e2e, correction du scénario e2e et de la feature `canary_up` du détecteur, revue du calibrage ([`calibrage-attaque-dos.md`](test-results/calibrage-attaque-dos.md)), README mis à jour | `chore/etat-tests-docs` |
 
-Vérifié au runtime : 17 conteneurs `healthy` (stack complète), secrets lus depuis Vault, attaques bloquées au WAF, ban puis levée du ban sans coupure du canary, transaction `COMPLETED` depuis le navigateur et en ligne de commande, logs de tous les services dans Loki, boucle de reprise autonome.
+Vérifié au runtime : stack complète (18 services `healthy`, `vault-init` terminé), secrets lus depuis Vault, attaques bloquées au WAF, ban puis levée du ban sans coupure du canary, transaction `COMPLETED` depuis le navigateur et en ligne de commande, logs de tous les services dans Loki, boucle de reprise autonome.
 
 ---
 
@@ -70,7 +73,7 @@ Vérifié au runtime : 17 conteneurs `healthy` (stack complète), secrets lus de
 |---|---|---|
 | Attaque depuis le PC Attaquant | Les essais du 22/10 partaient du PC Hôte. Rejouer depuis le PC Attaquant connecté à `RESILIENCE-G16` (`flood.py --auth demo --concurrency 200`), vérifier l'IP vue par le WAF (passerelle Docker attendue) et que la détection ML se déclenche toujours | cyber, infra |
 | Valider le réglage de démonstration | Limites de débit relâchées (proposé, [`calibrage-attaque-dos.md`](test-results/calibrage-attaque-dos.md)) : décision d'équipe, et l'argument à donner au jury | tous |
-| Clip Chrono | 3 essais sur 6 sous 60 s. PC Attaquant connecté (le point d'accès ne s'éteint plus), économie d'énergie désactivée, plusieurs prises en plan continu | tous |
+| Clip Chrono | 3 essais sur 6 sous 60 s. PC Attaquant connecté au point d'accès et économie d'énergie désactivée (sinon Windows l'éteint toutes les ~5 min), plusieurs prises en plan continu | tous |
 | Modèle ML entraîné (fait le 22/10) | `ml/models/model.joblib` n'est pas versionné : sur le PC du jury, refaire `collect.py` (20 min) puis `train.py`, ou copier le fichier | ia |
 
 ### Priorité 2 : essais restants
@@ -104,7 +107,10 @@ Vérifié au runtime : 17 conteneurs `healthy` (stack complète), secrets lus de
 - **Droits sur les comptes** : tout utilisateur connecté peut débiter n'importe quel compte de démonstration.
 - **IP réelle masquée par Docker Desktop** : le WAF voit la passerelle Docker pour tout le trafic externe. Un ban coupe donc tout l'externe pendant sa durée ; le canary interne n'est pas touché.
 - **Détection ML** : seule une dégradation réelle (plusieurs indicateurs ensemble) dépasse le seuil ; un canari en échec seul donne 0,67. Une panne franche reste couverte par l'alerte Prometheus `TargetDown`. Aux limites de débit par défaut, l'attaque est absorbée et c'est le SOC qui bannit (le ML ne déclenche pas).
-- **Point d'accès Windows** : il s'éteint après ~5 min sans appareil connecté (économie d'énergie), le WAF devient injoignable. Désactiver l'économie d'énergie avant la démonstration.
+- **Point d'accès Windows** : il s'éteint après ~5 min sans appareil connecté (économie d'énergie), le WAF devient injoignable et le canari échoue, ce qui ouvre un faux incident. Désactiver l'économie d'énergie avant la démonstration.
+- **Incident en double après un ban** : les 403 renvoyés à l'attaquant banni déclenchent `WafBlocagesModSecurity`, qui ouvre un incident « attaque applicative » sans action corrective. Mal qualifié, à expliquer si le jury lit le journal.
+- **Transaction finale du scénario** : l'attaquant banni attend 5 minutes avant sa transaction métier finale ; la transaction de contrôle prouve la reprise immédiatement.
+- **`main` non protégée sur GitHub** : la règle « pas de push direct » est respectée par l'équipe, mais n'est pas imposée.
 - **WAF sur `192.168.137.1`** : si le point d'accès n'est pas actif avant Docker, le WAF reste à l'état `Created`. En développement : `WAF_BIND_IP=127.0.0.1` (le scénario e2e, lui, exige le point d'accès : le garde-fou refuse `127.0.0.1`).
 - **Règle CRS 920350 exclue** (Host en adresse IP) : justifié dans `security/waf/crs-exclusions.conf`.
 - **npm 10** (fourni avec Node 22) plante sur les dépendances de vitest 5 : npm 11.21.0 est épinglé dans les Dockerfile, la CI et `tests/run_all.py`.

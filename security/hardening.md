@@ -54,11 +54,11 @@ Par service, quand l'image le permet :
 
 - **Toutes les images sont épinglées** à une version exacte (jamais `latest`), au-delà de deux semaines d'ancienneté.
 - Dépendances Python et npm épinglées (`requirements.txt`, `package-lock.json`).
-- CI : gitleaks, yamllint, tests Python et front à chaque push ; revue de PR avant merge.
+- CI : gitleaks, yamllint, tests Python et front à chaque push ; Pull Request fusionnée par un autre membre (la protection de branche n'est pas activée sur GitHub).
 
 ## 8. Assistant RAG
 
-- Lecture seule : aucun accès à Docker, Vault ou au moteur de remédiation (à implémenter avec ce principe).
+- Lecture seule : aucun accès à Docker, Vault ou au moteur de remédiation (implémenté : conteneur `read_only`, seul réseau `ui-net`, `docs/` monté en lecture seule).
 
 ## Limites connues (démo)
 

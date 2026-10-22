@@ -1,7 +1,7 @@
 # Calibrage de l'attaque DoS
 
 > Mesures du 20 octobre 2026, sur le PC Hôte (stack de dev, `127.0.0.1`), rate-limit du WAF par défaut sauf mention.
-> ⚠️ Localhost est le **cas le plus favorable au défenseur** (requêtes très rapides, pool de workers libéré vite). Le calibrage **réel** doit se refaire sur le réseau `RESILIENCE-G16` depuis le PC Attaquant (voir « Conséquences »).
+> ⚠️ Localhost est le **cas le plus favorable au défenseur** (requêtes très rapides, pool de workers libéré vite). Le calibrage réel a été refait le 22/10 sur le réseau `RESILIENCE-G16` (section « Calibrage réel du 22 octobre 2026 ») ; les sections du 20/10 sont conservées comme historique.
 
 ## Question
 
@@ -44,7 +44,7 @@ Si, sur le réseau, `canary_up` ne tombe toujours pas, leviers par ordre de pré
 - Le WAF absorbe l'attaque (beaucoup de 429), ce qui est **visible dans Grafana** et constitue déjà une partie de la démonstration (le WAF tient).
 - L'injection SQL/XSS (`attack/sqli/inject.py`) est bloquée en 403 par le WAF.
 
-## Prochaine étape
+## Prochaine étape (20/10, historique : traitée le 22/10)
 
 Leviers 1 et 2 de la liste ci-dessus à essayer **sur le réseau du groupe** : vérifier l'IP vue par le WAF depuis le PC Attaquant, puis calibrer jusqu'à une chute de `canary_up` reproductible. Noter ici la commande et les réglages retenus.
 
@@ -66,19 +66,20 @@ Revue du code, sans Docker. Les scores ci-dessous sont calculés avec le modèle
 - `canary_up` était constant dans les données d'entraînement synthétiques, donc ignoré par l'Isolation Forest. Il a maintenant un léger écart-type (`ml/detector/anomaly.py`).
 - `resilience_scenario.py` visait par défaut `127.0.0.1`, cible refusée par le garde-fou : le scénario attendait 5 minutes pour rien. Il vise maintenant `192.168.137.1`, s'arrête aussitôt si l'attaque ne démarre pas, ignore les incidents antérieurs et attend la levée du ban avant la transaction finale.
 
-**Paramètres côté remédiation** (valeurs par défaut du code, absentes de `.env`) :
+**Paramètres de la détection et de la remédiation** (valeurs par défaut ; seul `ML_ANOMALY_THRESHOLD` figure dans `.env.example`, les autres se règlent dans le code ou le compose) :
 
 | Variable | Défaut | Rôle |
 |---|---|---|
 | `ML_ANOMALY_THRESHOLD` | 0,7 | Seuil d'alerte du détecteur |
 | `BAN_MIN_REQUESTS` | 100 | Refus WAF (403/429) à partir desquels une IP est bannie |
 | `BAN_MIN_FLOOD_REQUESTS` | 1000 | Requêtes (toutes réponses) à partir desquelles une IP est bannie, même sans refus (ajouté le 22/10 : avec les limites relâchées, l'attaquant n'était pas banni) |
+| `BAN_REFRESH_ATTEMPTS`, `BAN_REFRESH_SECONDS` | 2, 5 | Relectures des journaux du WAF avant de conclure « pas de ban » (ajouté le 22/10 : Loki reçoit les journaux avec quelques secondes de retard) |
 | `BAN_MINUTES` | 5 | Durée du ban avant levée automatique |
 | `VERIFY_TIMEOUT_SECONDS` | 180 | Délai maximal de retour au nominal avant la transaction de contrôle |
 
 **Point d'attention** : derrière Docker Desktop, le PC Hôte et le PC Attaquant arrivent au WAF avec la même IP. Si le flood produit au moins 100 refus, la remédiation bannit cette IP : tout l'externe est coupé pendant 5 minutes (le canary, interne, continue). C'est attendu pendant la démonstration : il faut l'annoncer au jury.
 
-**Réglages à essayer sur `RESILIENCE-G16`** (PC Hôte, point d'accès actif, stack complète) :
+**Réglages à essayer sur `RESILIENCE-G16`** (proposition du 22/10 au matin, remplacée par le réglage retenu plus bas : 2000r/s, rafale 4000, concurrence 200) :
 
 ```bash
 # .env du PC Hôte : relâcher le frontal pour que le flood atteigne payment-api, puis redémarrer le frontal
@@ -131,7 +132,7 @@ Deux voies automatiques, toutes deux démontrées :
 | Réglage | Détection | Intérêt pour le jury |
 |---|---|---|
 | Limites par défaut | SOC (`WafRateLimitSature`), ban en ~5 s | Défense en profondeur : le WAF tient, le SOC réagit |
-| Limites relâchées (`WAF_RATE_LIMIT` et `FRONTEND_API_RATE_LIMIT` à 2000r/s, rafales à 4000) | **ML** (score 0,78), ban + relance, reprise prouvée en ~23 s | Montre le ML branché sur la remédiation (axe 2 de la grille) |
+| Limites relâchées (`WAF_RATE_LIMIT` et `FRONTEND_API_RATE_LIMIT` à 2000r/s, rafales à 4000) | **ML** (score 0,78 à 0,84), ban + relance, reprise prouvée en 37 à 75 s (6 essais sur 6) | Montre le ML branché sur la remédiation (axe 2 de la grille) |
 
 Pour la démonstration en direct et le Clip Chrono, nous proposons les **limites relâchées, concurrence 200** : c'est le scénario qui fait intervenir la détection par apprentissage. À annoncer au jury : les limites de débit sont volontairement relâchées pour laisser l'attaque atteindre le service ; en production, elles restent la première ligne de défense (premier tableau).
 

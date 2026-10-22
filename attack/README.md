@@ -28,7 +28,7 @@ Ils servent la démonstration : provoquer un incident visible, que la plateforme
 
 | Dossier | Script | But | Effet attendu |
 |---|---|---|---|
-| [`dos/`](dos/) | `flood.py` | Charge applicative contre payment-api | Dégradation visible : `canary_up` tombe, latence p95 et erreurs montent, remédiation déclenchée |
+| [`dos/`](dos/) | `flood.py` | Charge applicative contre payment-api | Dégradation visible : succès du canari en baisse (83 % au plus bas le 22/10), latence p95 multipliée par 7, score ML au-dessus du seuil, remédiation déclenchée |
 | [`sqli/`](sqli/) | `inject.py` | Injections SQL / XSS / etc. | Toutes bloquées par le WAF (403), tracées dans le SOC |
 
 ## Pendant l'attaque, observer

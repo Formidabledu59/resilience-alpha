@@ -96,8 +96,8 @@ Déclinaison technique des scénarios stratégiques (séquence réelle d'une att
 4. Le moteur bannit la source au WAF, relance payment-api, vérifie le canari, exécute une
    transaction de contrôle.
 
-> **Démontré le 22/10** ([répétition générale](../../test-results/repetition-generale.md)) : 6 essais
-> réussis sur 6, détection par le ML, ban de l'attaquant, relance, transaction de contrôle
+> **Démontré le 22/10** ([répétition générale](../../test-results/repetition-generale.md)), attaque
+> lancée depuis le PC Hôte (à rejouer depuis le PC Attaquant) : 6 essais réussis sur 6, détection par le ML, ban de l'attaquant, relance, transaction de contrôle
 > `COMPLETED`. Condition : limites de débit relâchées pour la démonstration. Aux réglages par
 > défaut, le WAF et le frontal absorbent le flood (le canari reste à 1, score ML ≤ 0,43) et c'est
 > la règle SOC qui bannit l'attaquant en ~5 s ([calibrage](../../test-results/calibrage-attaque-dos.md)).
@@ -153,7 +153,7 @@ Vraisemblance et gravité après mesures (échelle 1 à 4).
 - **Mono-hôte, pas de haute disponibilité réelle** : une panne du PC Hôte arrête tout.
 - **IP réelle masquée par Docker Desktop** : un ban coupe tout le trafic externe (le canari
   interne prouve quand même la reprise).
-- **Modèle ML entraîné sur un trafic simulé** : à ré-entraîner sur des données réelles.
+- **Modèle ML entraîné sur un court échantillon de trafic réel** (20 minutes) : à ré-entraîner sur un historique long.
 - **Pas de TLS** (laboratoire sans domaine ni certificat).
 
 Ces risques sont acceptés dans le cadre du démonstrateur. Arbitrages et recommandations pour une

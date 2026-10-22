@@ -99,7 +99,7 @@ flowchart LR
 2. **Détection** : le détecteur ML calcule un score d'anomalie toutes les 5 secondes sur une fenêtre glissante de métriques.
 3. **Décision** : au-delà du seuil, une alerte signée est envoyée au moteur de remédiation, qui choisit le playbook adapté au type d'incident.
 4. **Action** : exécution du playbook Ansible (ban de l'IP source au WAF, relance du service touché).
-5. **Vérification** : le moteur attend que la métrique du canari dans Prometheus retrouve un taux de succès nominal, puis demande au canari une transaction de contrôle. L'incident n'est clôturé que si elle aboutit.
+5. **Vérification** : le moteur attend 3 relevés consécutifs `canary_up = 1` dans Prometheus, tous postérieurs à l'action (environ 15 s), puis demande au canari une transaction de contrôle (jusqu'à 3 essais). L'incident n'est clôturé que si elle aboutit.
 
 > Un conteneur qui redémarre n'est **pas** considéré comme une reprise. Seule une transaction métier réussie l'est.
 
@@ -171,7 +171,8 @@ resilience-alpha/
 │   ├── runbooks/
 │   ├── governance/           ebios-rm/  pca-pra/  nis2-dora/  recommandations.md
 │   ├── test-results/
-│   └── etat-des-lieux.md     Avancement et reste à faire
+│   ├── etat-des-lieux.md     Avancement et reste à faire
+│   └── soutenance.md         Déroulé de la soutenance et du diaporama
 └── tests/
     ├── run_all.py            Lance tous les tests du dépôt sur n'importe quel PC
     └── e2e/                  Scénario complet automatisé
@@ -421,7 +422,7 @@ L'état d'avancement du projet (fait, à faire, priorités) est tenu à jour dan
 
 Mode opératoire, cible autorisée et paramètres : voir [`attack/README.md`](attack/README.md).
 
-> **État (22/10)** : la boucle complète est **démontrée sur une vraie attaque** : DoS envoyé sur le WAF du point d'accès, détection par le ML, ban de l'attaquant et relance de payment-api par Ansible, transaction de contrôle `COMPLETED`, en 37 à 75 s (6 essais sur 6, [`repetition-generale.md`](docs/test-results/repetition-generale.md)). Condition : limites de débit relâchées pour laisser l'attaque atteindre le service ; aux réglages par défaut, le WAF absorbe le flood et la règle SOC bannit l'attaquant en ~5 s ([`calibrage-attaque-dos.md`](docs/test-results/calibrage-attaque-dos.md)).
+> **État (22/10)** : la boucle complète est **démontrée sur une vraie attaque** : DoS envoyé sur le WAF du point d'accès, détection par le ML, ban de l'attaquant et relance de payment-api par Ansible, transaction de contrôle `COMPLETED`, en 37 à 75 s (6 essais sur 6, [`repetition-generale.md`](docs/test-results/repetition-generale.md)). Attaque lancée depuis le PC Hôte vers sa propre adresse sur le point d'accès : à rejouer depuis le PC Attaquant. Une vidéo de démonstration a été filmée le même jour (alerte ML 0,84, attaquant banni 8 s après l'alerte, incident clos 36 s après). Condition : limites de débit relâchées pour laisser l'attaque atteindre le service ; aux réglages par défaut, le WAF absorbe le flood et la règle SOC bannit l'attaquant en ~5 s ([`calibrage-attaque-dos.md`](docs/test-results/calibrage-attaque-dos.md)).
 
 **Scénario complémentaire** : tentative d'injection applicative bloquée par le WAF et remontée dans le SOC. Ce cas illustre une réponse différente : il ne s'agit pas de restaurer la disponibilité mais de bloquer, tracer et qualifier une tentative de compromission.
 
@@ -431,7 +432,7 @@ Mode opératoire, cible autorisée et paramètres : voir [`attack/README.md`](at
 
 - **Approche** : détection d'anomalies non supervisée (Isolation Forest)
 - **Variables** (6, toutes lues dans Prometheus) : taux de succès du canari, canari joignable, latence p95, débit de transactions, taux d'erreurs 5xx, débit de requêtes. Les blocages WAF et le CPU ne sont pas utilisés (non disponibles dans Prometheus, voir `ml/README.md`)
-- **Données d'entraînement** : métriques collectées sous trafic nominal simulé
+- **Données d'entraînement** : 20 minutes de trafic nominal réel de la plateforme (121 relevés, le 22/10), avec un plancher de variabilité pour les indicateurs constants ; le modèle (`ml/models/model.joblib`) n'est pas versionné et se réentraîne sur chaque PC de démonstration
 - **Sortie** : score d'anomalie exposé dans Prometheus et alerte envoyée au moteur de remédiation au-delà du seuil
 
 Données, préparation, résultats et limites : voir [`ml/README.md`](ml/README.md).
@@ -477,7 +478,7 @@ Détails : [`assistant-rag/README.md`](assistant-rag/README.md).
 | Durcissement | Conteneurs non-root, systèmes de fichiers en lecture seule si possible, capacités Linux réduites, réseaux internes isolés |
 | Moindre privilège | Accès Docker de la remédiation filtré par proxy, assistant RAG sans privilèges |
 | Exposition réseau | Seul le WAF est publié sur le réseau du groupe |
-| Accès back-office | Reconnaissance faciale (caméra USB + IA légère sur le PC Hôte) avant le mot de passe, état signalé par un ESP8266 (consigne additionnelle 1). Voir [`biometrics/`](biometrics/) |
+| Accès back-office | Consigne additionnelle 1 **préparée, non activée** (décision d'équipe) : reconnaissance faciale (caméra USB + IA légère sur le PC Hôte) avant le mot de passe, état signalé par un ESP8266, activable par `BACKOFFICE_BIOMETRICS=true`. Voir [`biometrics/`](biometrics/) |
 | Frontal et dashboard | En-têtes de sécurité (CSP stricte, anti-iframe), aucune ressource externe, rate-limit et champ piège anti-spam, aucun secret dans le navigateur |
 | Données personnelles | Page RGPD, aucun cookie ni traceur, mesure d'audience par journaux serveur sans adresse IP, conservation 7 jours |
 
@@ -539,7 +540,7 @@ Les résultats des essais et des campagnes de chaos engineering sont consignés 
 
 ## 15. Règles de contribution
 
-**Branches** : `main` est protégée. On travaille sur des branches courtes, mergées plusieurs fois par jour.
+**Branches** : on ne pousse jamais directement sur `main` (règle d'équipe ; la protection de branche n'est pas activée sur GitHub, voir [`docs/etat-des-lieux.md`](docs/etat-des-lieux.md)). On travaille sur des branches courtes, mergées plusieurs fois par jour.
 
 Piliers : `dev`, `infra`, `ia`, `cyber`, `gouv`.
 
@@ -557,7 +558,7 @@ fix(infra): vérification du canari avant clôture
 docs(gouv): matrice EBIOS atelier 2
 ```
 
-**Pull Requests** : Toute Pull Request doit être approuvée par un autre membre de l'équipe et la CI doit être verte avant merge.
+**Pull Requests** : la CI doit être verte avant merge, et la Pull Request est fusionnée par un autre membre que son auteur. L'approbation formelle n'est pas imposée par GitHub (4 PR approuvées sur les 25 dernières).
 
 **Secrets** : ne jamais commiter `.env`, clés, tokens ou mots de passe. Un secret commité reste dans l'historique Git et donc dans l'archive rendue. La CI exécute `gitleaks` à chaque push.
 
@@ -565,7 +566,7 @@ docs(gouv): matrice EBIOS atelier 2
 
 ## 16. Livrables
 
-À déposer dans le dossier `Workshop2026-M2-G16/` avant le **jeudi 23h59** (gel du code à **17h**).
+À déposer dans le dossier `Workshop2026-M2-G16/` avant le **jeudi 23h59** (gel du code à **17h**). Déroulé de la soutenance, diaporama et questions probables : [`docs/soutenance.md`](docs/soutenance.md).
 
 | Fichier | Contenu |
 |---|---|
@@ -589,7 +590,14 @@ git archive --format=zip --prefix=Workshop2026-M2-G16-Code/ \
 
 ## 17. Limites connues
 
-Ce démonstrateur est un prototype réalisé en quatre jours. Il n'est pas destiné à la production. Les limites identifiées (mono-hôte, absence de haute disponibilité réelle, modèle ML entraîné sur un trafic simulé, etc.) et ce que nous ferions différemment dans un contexte industriel sont détaillés dans [`docs/governance/recommandations.md`](docs/governance/recommandations.md).
+Ce démonstrateur est un prototype réalisé en quatre jours. Il n'est pas destiné à la production. Les limites identifiées (mono-hôte, absence de haute disponibilité réelle, modèle ML entraîné sur un court échantillon de trafic réel, etc.) et ce que nous ferions différemment dans un contexte industriel sont détaillés dans [`docs/governance/recommandations.md`](docs/governance/recommandations.md).
+
+Limites constatées pendant la répétition générale du 22/10 ([`repetition-generale.md`](docs/test-results/repetition-generale.md)) :
+
+- **Attaque pas encore lancée depuis le PC Attaquant** : les essais partaient du PC Hôte vers sa propre adresse sur le point d'accès (même chemin jusqu'au WAF).
+- **Point d'accès Windows** : sans appareil connecté, l'économie d'énergie l'éteint toutes les ~5 minutes ; `192.168.137.1` disparaît, le WAF ne répond plus et le canari échoue, ce qui ouvre un faux incident. À désactiver avant la démonstration.
+- **Incident en double après un ban** : les 403 renvoyés à l'attaquant banni déclenchent la règle SOC `WafBlocagesModSecurity`, qui ouvre un second incident classé « attaque applicative ». Sans action corrective, mais mal qualifié.
+- **Transaction finale du scénario automatisé** : l'attaquant étant banni 5 minutes, sa transaction métier finale attend la levée du ban ; la transaction de contrôle (interne) prouve la reprise immédiatement.
 
 Limites déjà identifiées côté frontal :
 

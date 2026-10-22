@@ -51,7 +51,9 @@ Issue : **« Reprise prouvée par une transaction de contrôle réussie »**. Du
 - Le redémarrage d'un service par Ansible passe bien par `socket-proxy-rw` (droits minimaux),
   sans accès direct au socket Docker.
 
-## Points relevés (à traiter)
+## Points relevés
+
+> **Traités le 22/10** ([répétition générale](repetition-generale.md)) : le chemin ML a été démontré sur un DoS réel (6 essais sur 6), le modèle est entraîné sur du trafic réel, le DoS est calibré. Reste à rejouer l'attaque depuis le PC Attaquant.
 
 1. **TargetDown déclenche avant le détecteur ML** quand un service est *arrêté* : l'alerte
    Prometheus (30 s + `group_wait` 10 s) part avant que le ML ait 3 relevés au-dessus du seuil.
@@ -65,9 +67,8 @@ Issue : **« Reprise prouvée par une transaction de contrôle réussie »**. Du
    modifications (ancienne image servie). Reconstruire avec `docker compose build --no-cache
    frontend dashboard` après un `git pull`, ou `docker compose up -d --build`.
 
-## Reste à faire
+## Reste à faire (mis à jour le 22/10)
 
-- Calibrer le **DoS** sur le réseau `RESILIENCE-G16` depuis le PC Attaquant, jusqu'à une chute
-  de `canary_up` sans arrêt de conteneur, pour déclencher le **chemin ML** (et non TargetDown).
-- Rejouer `tests/e2e/resilience_scenario.py` de bout en bout depuis le PC Attaquant.
-- Entraîner le modèle ML sur des données collectées.
+- ~~Calibrer le DoS pour déclencher le chemin ML~~ : fait le 22/10 ([calibrage](calibrage-attaque-dos.md)).
+- ~~Entraîner le modèle ML sur des données collectées~~ : fait le 22/10 (121 relevés réels).
+- Rejouer l'attaque **depuis le PC Attaquant** (les essais du 22/10 partaient du PC Hôte).

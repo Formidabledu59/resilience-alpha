@@ -63,7 +63,7 @@ Scores du modèle de repli synthétique sur des situations types (détail et con
 Ce que le modèle sait faire : repérer une **combinaison inhabituelle** de plusieurs indicateurs (succès du canari, latence, erreurs, débit). Ce n'est pas une règle codée en dur : le seuil porte sur un score appris à partir du trafic nominal.
 
 Limites constatées :
-- **Modèle de repli entraîné sur des données simulées** : à remplacer par un modèle entraîné sur 30 minutes de trafic nominal réel (étapes ci-dessus) avant la démonstration.
+- **Modèle de démonstration entraîné sur un court échantillon** : le 22/10, 20 minutes de trafic nominal réel (121 relevés, `ml_model_fallback = 0`). Scores du modèle réel : nominal 0,02, canari en panne seul 0,67, service dégradé 0,97 ; sur DoS réel, 0,78 (calibrage) et 0,84 (vidéo), alerte déclenchée à chaque essai. En production, il faudrait un historique long (cycles jour / nuit, pics).
 - **Une seule dégradation n'alerte pas toujours** : l'Isolation Forest isole mieux un point qui s'écarte sur plusieurs axes. Un canari en échec seul reste sous le seuil ; une panne franche est couverte par l'alerte Prometheus `TargetDown`.
 - **Une attaque contenue ne déclenche rien** : si le WAF et le frontal absorbent le flood, le service n'est pas dégradé et aucun incident n'est ouvert. C'est voulu, mais le DoS de la démonstration doit être calibré pour dégrader réellement le service.
 - **Délai de détection** : 3 relevés consécutifs × 5 s, plus le temps que les moyennes glissantes sur 1 minute (`rate[1m]`) réagissent. Réglable par `ML_ALERT_CONSECUTIVE` (2 = plus rapide, plus de faux positifs).

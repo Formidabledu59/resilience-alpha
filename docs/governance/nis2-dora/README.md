@@ -48,7 +48,7 @@ Une plateforme de paiement relèverait des deux. Le POC se concentre sur les asp
 | Sécurité de la chaîne d'approvisionnement | Images épinglées par version, dépendances figées, CI `gitleaks` | Évaluation des fournisseurs, SBOM complet |
 | Sécurité de l'acquisition et du développement | Conteneurs non-root, read-only, revues par PR, tests | Cycle SSDLC complet, tests d'intrusion externes |
 | Cryptographie et gestion des secrets | Vault (KV v2), aucun secret en clair, JWT signés | HSM, rotation automatisée des clés |
-| Contrôle d'accès et authentification | JWT, biométrie du back-office (consigne add. 1), moindre privilège | IAM d'entreprise, MFA généralisée |
+| Contrôle d'accès et authentification | JWT, moindre privilège ; biométrie du back-office (consigne add. 1) préparée, non activée | IAM d'entreprise, MFA généralisée |
 | Notification d'incident (art. 23) : alerte précoce sous 24 h, rapport sous 72 h | Journal horodaté et rapport par incident = matière à notifier | Transmission réelle au CSIRT national |
 | Mesures d'efficacité (art. 21.1) | Métriques Prometheus, dashboards, canari | Indicateurs suivis dans la durée |
 
@@ -62,7 +62,7 @@ Une plateforme de paiement relèverait des deux. Le POC se concentre sur les asp
 | Détection des anomalies | Détecteur ML (Isolation Forest) sur métriques temps réel | Corrélation multi-sources à grande échelle |
 | Réponse et rétablissement | Remédiation autonome + preuve par transaction métier | Plans de communication, continuité des opérations critiques |
 | Gestion des incidents et notification | Classification des incidents, journal chaîné, rapports Markdown | Déclaration aux autorités (modèles DORA), délais réglementaires |
-| Tests de résilience opérationnelle | Chaos (arrêt de service, fait le 21/10), injections bloquées (fait), DoS et scénario e2e (prévus) | Tests TLPT (red team avancée) encadrés par un prestataire agréé |
+| Tests de résilience opérationnelle | Chaos (arrêt de service, fait le 21/10), injections bloquées (fait), DoS et scénario e2e (faits le 22/10, 6/6) | Tests TLPT (red team avancée) encadrés par un prestataire agréé |
 | Risque lié aux tiers TIC | Ollama local (pas de dépendance cloud), images maîtrisées | Registre des contrats, stratégie de sortie fournisseur |
 | Partage d'informations sur les cyber-menaces | Règles SOC documentées, types d'attaque qualifiés | Participation à une communauté de partage (ISAC) |
 

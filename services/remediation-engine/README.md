@@ -3,7 +3,7 @@
 Moteur de remédiation (FastAPI, port `8000`, aucun port publié, réseaux `obs-net` et `admin-net`, jamais `app-net`).
 Il reçoit les alertes, ouvre un incident, rassemble les preuves, lance la remédiation, vérifie la reprise par une transaction métier, puis clôture. **Chaque étape est écrite dans un journal d'audit** : pour chaque attaque, on sait ce qui s'est passé, quelles erreurs ont été observées, comment la plateforme s'est défendue et si la reprise est prouvée.
 
-> État : journal, webhooks, collecte des preuves, **exécution des playbooks Ansible** et vérification de la reprise sont faits et testés. Boucle prouvée en conteneurs le 21/10 (arrêt de `payment-api`, `restart_api.yml`, transaction de contrôle `COMPLETED`, incident `CLOSED` en 67 s environ) : [`repetition-boucle-reprise.md`](../../docs/test-results/repetition-boucle-reprise.md).
+> État : journal, webhooks, collecte des preuves, **exécution des playbooks Ansible** et vérification de la reprise sont faits et testés. Boucle prouvée en conteneurs le 21/10 (arrêt de `payment-api`, `restart_api.yml`, transaction de contrôle `COMPLETED`, incident `CLOSED` en 67 s environ) : [`repetition-boucle-reprise.md`](../../docs/test-results/repetition-boucle-reprise.md). Le 22/10, boucle prouvée sur un DoS réel détecté par le ML (6 essais sur 6, 37 à 75 s ; vidéo : attaquant banni 8 s après l'alerte, incident clos 36 s après) : [`repetition-generale.md`](../../docs/test-results/repetition-generale.md).
 
 ## Fichiers
 

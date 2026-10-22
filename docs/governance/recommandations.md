@@ -24,9 +24,9 @@ Ordre de priorité retenu (événements redoutés EBIOS) :
 | Arbitrage | Ce que nous avons choisi | Ce que nous avons sacrifié | Pourquoi c'est acceptable ici |
 |---|---|---|---|
 | Automatiser ou garder l'humain | Reprise **automatique** pour la disponibilité ; **humaine** pour une compromission | Rapidité de réponse à une fuite | Une machine peut relancer un service ; elle ne doit pas décider seule qu'une fuite est traitée |
-| Pouvoir du moteur de remédiation | **Liste blanche** de 4 playbooks, Docker via un proxy limité (`socket-proxy-rw`), jamais sur le réseau applicatif | Souplesse (un incident imprévu finit en escalade) | Un automate à droits élevés est une cible : on réduit ce qu'il peut faire |
+| Pouvoir du moteur de remédiation | **Liste blanche** de playbooks (`ban_ip`, `restart_api`, et `unban_ip` à la levée du ban), Docker via un proxy limité (`socket-proxy-rw`), jamais sur le réseau applicatif | Souplesse (un incident imprévu finit en escalade) | Un automate à droits élevés est une cible : on réduit ce qu'il peut faire |
 | Détection | Isolation Forest **plus** alertes classiques (`TargetDown`, règles SOC) | Simplicité d'un seul mécanisme | Le ML voit les dégradations combinées ; les règles couvrent les pannes franches |
-| Données d'entraînement | Modèle de repli simulé, à remplacer par du trafic réel collecté | Précision du modèle | Délai : 4 jours. La procédure de collecte et d'entraînement est prête |
+| Données d'entraînement | 20 minutes de trafic réel de la plateforme (121 relevés), plancher de variabilité | Représentativité (pas de cycles jour / nuit ni de pics) | Délai : 4 jours. Le modèle distingue déjà nominal (0,02) et dégradé (0,97) ; procédure de réentraînement documentée |
 | Ban d'IP | Temporaire (5 min), sur l'IP vue par le WAF | Tout l'externe est coupé pendant le ban (IP partagée derrière Docker Desktop) | Le canari interne prouve que le service reste sain ; limite annoncée |
 | Exposition | Un seul port réseau (WAF) ; consoles sur `127.0.0.1` | Administration à distance | Le PC est aussi sur le WiFi du campus |
 | Chiffrement | Pas de TLS (pas de domaine ni de certificat en laboratoire) | Confidentialité en transit | Données fictives, réseau isolé ; prioritaire en production |
