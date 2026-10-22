@@ -27,6 +27,13 @@ RESULT = re.compile(r"RESULT: ([^\"'\n]+)")
 
 # Note dans le journal : (incident_id, action, résultat)
 Notify = Callable[[str, str, str], Awaitable[None]]
+# Preuves relues avant le ban : (incident_id) -> incident à jour
+Refresh = Callable[[str], Awaitable[dict]]
+# Loki reçoit les journaux du WAF avec quelques secondes de retard : quand la détection est rapide,
+# l'attaquant n'a pas encore atteint le seuil au moment de l'alerte (répétition du 22/10). Avant de
+# conclure « pas de ban », on relit les preuves jusqu'à BAN_REFRESH_ATTEMPTS fois.
+BAN_REFRESH_ATTEMPTS = int(os.environ.get("BAN_REFRESH_ATTEMPTS", "2"))
+BAN_REFRESH_SECONDS = float(os.environ.get("BAN_REFRESH_SECONDS", "5"))
 
 
 class PlaybookError(RuntimeError):
@@ -75,15 +82,26 @@ async def run_playbook(name: str, extra_vars: dict, timeout: float = TIMEOUT_SEC
 class AnsibleExecutor:
     """Exécuteur branché dans Engine : async (playbook, incident) -> résultat lisible."""
 
-    def __init__(self, notify: Notify | None = None, runner=run_playbook, ban_minutes: float = BAN_MINUTES):
+    def __init__(self, notify: Notify | None = None, runner=run_playbook, ban_minutes: float = BAN_MINUTES,
+                 refresh: Refresh | None = None, refresh_attempts: int = BAN_REFRESH_ATTEMPTS,
+                 refresh_seconds: float = BAN_REFRESH_SECONDS):
         self.notify = notify
         self.runner = runner
         self.ban_minutes = ban_minutes
+        self.refresh = refresh
+        self.refresh_attempts = refresh_attempts
+        self.refresh_seconds = refresh_seconds
         self.tasks: set[asyncio.Task] = set()
 
     async def __call__(self, playbook: str, incident: dict) -> str:
         if playbook == "ban_ip.yml":
             ips = ips_to_ban(incident)
+            for _ in range(self.refresh_attempts if self.refresh else 0):
+                if ips:
+                    break
+                await asyncio.sleep(self.refresh_seconds)
+                incident = await self.refresh(incident["id"])
+                ips = ips_to_ban(incident)
             if not ips:
                 return (f"aucune IP au-delà de {BAN_MIN_REQUESTS} requêtes refusées "
                         f"ni de {BAN_MIN_FLOOD_REQUESTS} requêtes envoyées : pas de ban")

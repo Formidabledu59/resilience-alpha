@@ -101,6 +101,7 @@ Chaque playbook se termine par une ligne `RESULT: <texte>` (par exemple « 172.2
 | `PLAYBOOK_DIR` | Dossier des playbooks (défaut `/ansible/playbooks`) |
 | `BAN_MINUTES` | Durée du ban avant levée automatique (défaut 5) |
 | `BAN_MIN_REQUESTS` | Nombre de refus WAF à partir duquel une IP est bannie (défaut 100) |
+| `BAN_REFRESH_ATTEMPTS`, `BAN_REFRESH_SECONDS` | Si aucune IP n'atteint les seuils au moment de l'alerte, relectures des journaux du WAF avant de conclure « pas de ban » (défaut 2 relectures à 5 s d'intervalle) : Loki reçoit les journaux avec quelques secondes de retard |
 | `BAN_MIN_FLOOD_REQUESTS` | Nombre de requêtes (toutes réponses) sur la fenêtre de l'incident à partir duquel une IP est bannie (défaut 1000 ; mesuré le 22/10 : 1 883 à 7 372 requêtes pour l'attaquant au moment de l'alerte, ~60 pour le canary) |
 | `DOCKER_HOST`, `ANSIBLE_CONFIG` | Accès Docker via `socket-proxy-rw` et configuration Ansible (fixés dans `docker-compose.yml`) |
 
@@ -112,4 +113,4 @@ pip install -r requirements.txt pytest
 python -m pytest
 ```
 
-34 tests : chaîne SHA-256 (falsification et suppression détectées), classification, types d'attaque, erreurs, bilan, rapport, cycle complet (clôture, échec du canari, échec de la transaction de contrôle, playbooks, regroupement des alertes, redémarrage), webhooks (HMAC valide, mauvais secret, rejeu, bearer), playbooks (seuils des IP à bannir : refus et volume, service à relancer, ban puis levée automatique), reprise validée sans attendre la fenêtre de 60 s du taux de succès, métriques antérieures au redémarrage refusées, transaction de contrôle réessayée puis abandonnée, canari instable refusé. Depuis la racine : `python tests/run_all.py --only remediation`.
+38 tests : chaîne SHA-256 (falsification et suppression détectées), classification, types d'attaque, erreurs, bilan, rapport, cycle complet (clôture, échec du canari, échec de la transaction de contrôle, playbooks, regroupement des alertes, redémarrage), webhooks (HMAC valide, mauvais secret, rejeu, bearer), playbooks (seuils des IP à bannir : refus et volume, service à relancer, ban puis levée automatique, relecture des journaux WAF avant de renoncer au ban), reprise validée sans attendre la fenêtre de 60 s du taux de succès, métriques antérieures au redémarrage refusées, transaction de contrôle réessayée puis abandonnée, canari instable refusé. Depuis la racine : `python tests/run_all.py --only remediation`.

@@ -75,7 +75,8 @@ async def lifespan(app: FastAPI):
         # Playbooks exécutés seulement si Ansible est présent (image Docker) : en test, le
         # journal indique "exécution pas encore branchée".
         if shutil.which("ansible-playbook"):
-            app.state.engine.executor = AnsibleExecutor(notify=app.state.engine.note)
+            app.state.engine.executor = AnsibleExecutor(notify=app.state.engine.note,
+                                                        refresh=app.state.engine.refresh_evidence)
         JOURNAL_OK.set(1 if journal.verify()["ok"] else 0)
         yield
         for task in list(app.state.engine.tasks):
