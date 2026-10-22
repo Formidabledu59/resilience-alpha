@@ -31,7 +31,7 @@ python tests/run_all.py                 # tous les tests (Python 3.11+, Node.js 
 python tests/run_all.py --python-only   # sans Node.js
 ```
 
-Aucun Docker ni service démarré n'est nécessaire : le script installe les dépendances dans `.venv-tests/` (ignoré par Git) et reproduit la CI. **12 suites, 178 tests, toutes vertes** le 22/10 sous Windows. Détail par suite : [README, section 14](../README.md#14-tests).
+Aucun Docker ni service démarré n'est nécessaire : le script installe les dépendances dans `.venv-tests/` (ignoré par Git) et reproduit la CI. **12 suites, 183 tests, toutes vertes** le 22/10 sous Windows. Détail par suite : [README, section 14](../README.md#14-tests).
 
 ---
 
