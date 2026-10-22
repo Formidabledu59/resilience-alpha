@@ -19,11 +19,14 @@ from incidents import ACTIVE_STATUSES, CATEGORIES, assess, classify, fr_percent
 from journal import Journal, now_iso
 
 LOOKBACK_SECONDS = 300      # les preuves couvrent aussi les 5 minutes qui précèdent l'alerte
-RECOVERY_RATIO = 0.95       # taux de succès du canari considéré comme nominal
-# Ou : canary_up = 1 sur N relevés consécutifs (~N x 5 s). Le taux de succès est calculé sur
-# 60 s : après une panne, il met une minute à remonter, alors que le service est déjà rétabli.
-# La reprise reste prouvée par la transaction de contrôle qui suit, pas par ce seul critère.
+# Retour au nominal : canary_up = 1 sur N relevés consécutifs (~N x 5 s), tous postérieurs à
+# l'action. On ne se fie pas au taux de succès sur 60 s : il met une minute à remonter après une
+# panne et, à l'inverse, peut afficher 100 % juste après un redémarrage alors que le service
+# n'est pas encore prêt (répétition du 22/10 : transaction de contrôle en HTTP 502).
 STABLE_CHECKS = int(os.environ.get("VERIFY_STABLE_CHECKS", "3"))
+# Transaction de contrôle : un échec passager juste après un redémarrage est réessayé. La
+# reprise n'est prouvée que par une transaction COMPLETED.
+PROBE_ATTEMPTS = int(os.environ.get("VERIFY_PROBE_ATTEMPTS", "3"))
 
 # Liste blanche : seuls ces playbooks peuvent être exécutés, selon la catégorie d'incident.
 # Les attaques applicatives et la reconnaissance sont déjà bloquées par le WAF : pas d'action.
@@ -191,7 +194,7 @@ class Engine:
         incident = self._current(incident_id)
         incident["status"] = "VERIFYING"
         self._step(incident, "Attente du retour nominal du canari",
-                   f"canary_up = 1 sur {STABLE_CHECKS} relevés consécutifs, ou taux de succès >= {fr_percent(RECOVERY_RATIO)}", "info")
+                   f"canary_up = 1 sur {STABLE_CHECKS} relevés consécutifs", "info")
         self._save(incident, "incident.verifying")
 
         deadline = asyncio.get_running_loop().time() + self.verify_timeout
@@ -200,7 +203,7 @@ class Engine:
         while True:
             up, ratio = await self.observer.canary_state()
             stable = stable + 1 if up == 1 else 0
-            if up == 1 and (stable >= STABLE_CHECKS or (ratio is not None and ratio >= RECOVERY_RATIO)):
+            if stable >= STABLE_CHECKS:
                 break
             if asyncio.get_running_loop().time() >= deadline:
                 incident = self._current(incident_id)
@@ -212,10 +215,18 @@ class Engine:
         incident = self._current(incident_id)
         self._step(incident, "Vérification canary_up", f"1 sur {stable} relevé(s), taux de succès {fr_percent(ratio)}", "verification")
         self._save(incident, "verification.canary")
-        try:
-            probe = await self.probe()
-        except Exception as exc:  # noqa: BLE001
-            probe = {"ok": False, "status": "ERROR", "detail": f"{type(exc).__name__}: {exc}"}
+        for attempt in range(1, PROBE_ATTEMPTS + 1):
+            try:
+                probe = await self.probe()
+            except Exception as exc:  # noqa: BLE001
+                probe = {"ok": False, "status": "ERROR", "detail": f"{type(exc).__name__}: {exc}"}
+            if probe.get("ok") or attempt == PROBE_ATTEMPTS:
+                break
+            incident = self._current(incident_id)
+            self._step(incident, f"Transaction de contrôle (essai {attempt}/{PROBE_ATTEMPTS})",
+                       f"{probe.get('status', 'ERROR')} : {probe.get('detail') or 'échec'}, nouvel essai", "verification")
+            self._save(incident, "verification.probe_retry")
+            await asyncio.sleep(self.poll_interval)
         incident = self._current(incident_id)
         if probe.get("ok"):
             result = f"{probe['status']}, transaction n°{probe.get('transaction_id')} en {probe.get('latency_seconds')} s"

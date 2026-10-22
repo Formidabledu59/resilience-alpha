@@ -71,8 +71,9 @@ Une plateforme de paiement relèverait des deux. Le POC se concentre sur les asp
 ## Ce que la démonstration met particulièrement en avant
 
 - **Détection et réponse automatisées** (NIS2 gestion des incidents, DORA détection/réponse) :
-  sur une panne de service, la boucle a agi en ~67 s et **prouvé** la reprise par une
-  transaction (21/10). Le chemin attaque DoS → détection ML reste à démontrer.
+  sur une panne de service (21/10, ~67 s) et sur une attaque DoS réelle détectée par le ML
+  (22/10, 6 essais sur 6, 37 à 75 s), la boucle a agi seule et **prouvé** la reprise par une
+  transaction.
 - **Traçabilité vérifiable** : le journal d'incidents chaîné SHA-256 fournit une preuve
   d'intégrité, utile pour une notification d'incident crédible.
 - **Résilience testée** : la reprise a été rejouée en conteneurs réels (chaos), pas seulement

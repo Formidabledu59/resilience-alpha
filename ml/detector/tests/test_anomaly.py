@@ -61,3 +61,39 @@ def test_flood_absorbe_par_les_rate_limits_ne_declenche_pas():
     # d'incident. Le DoS doit dégrader réellement le service (docs/test-results/calibrage-attaque-dos.md).
     model, normalizer = fit(synthetic_nominal())
     assert score_one(model, normalizer, {**NOMINAL, "request_rate": 11.0}) < 0.7
+
+
+def _nominal_reel(n=240, seed=3):
+    """Nominal tel que collecté : canari toujours OK, aucune erreur, le reste varie peu."""
+    rng = np.random.default_rng(seed)
+    return np.column_stack([
+        np.ones(n), np.ones(n),                      # canary_success_ratio, canary_up : constants
+        rng.normal(0.02, 0.004, n).clip(0),          # latency_p95
+        rng.normal(0.2, 0.03, n).clip(0),            # throughput (canari seul)
+        np.zeros(n),                                 # errors_5xx : constant
+        rng.normal(0.6, 0.1, n).clip(0),             # request_rate
+    ])
+
+
+def test_sans_plancher_un_modele_reel_ignore_le_canari():
+    # Démonstration du problème : colonnes constantes ignorées, canari KO = score nominal.
+    model, normalizer = fit(_nominal_reel())
+    base = dict(zip(FEATURE_NAMES, _nominal_reel()[0]))
+    ko = {**base, "canary_up": 0.0, "canary_success_ratio": 0.0}
+    assert abs(score_one(model, normalizer, ko) - score_one(model, normalizer, base)) < 0.05
+
+
+def test_plancher_de_variabilite_rend_le_canari_visible():
+    from anomaly import with_noise_floor
+    data = with_noise_floor(_nominal_reel())
+    assert data[:, 1].std() > 0 and data[:, 4].std() > 0      # plus aucune colonne constante
+    assert data[:, :2].max() <= 1.0 and data.min() >= 0.0       # bornes physiques respectées
+    model, normalizer = fit(data)
+    base = dict(zip(FEATURE_NAMES, _nominal_reel()[0]))
+    assert score_one(model, normalizer, base) < 0.5
+    # Canari KO seul : au-delà du 99e centile du nominal (0,5), sans dépasser forcément le seuil
+    # (une dégradation sur un seul axe reste une limite connue, voir ml/README.md).
+    ko = {**base, "canary_up": 0.0, "canary_success_ratio": 0.0}
+    assert score_one(model, normalizer, ko) > 0.5
+    degrade = {**base, "canary_success_ratio": 0.5, "latency_p95": 2.0, "errors_5xx": 0.5, "request_rate": 11.0}
+    assert score_one(model, normalizer, degrade) >= 0.7

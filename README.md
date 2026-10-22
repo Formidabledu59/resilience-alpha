@@ -399,13 +399,13 @@ L'état d'avancement du projet (fait, à faire, priorités) est tenu à jour dan
 | Phase | Ce qui est visible sur le dashboard |
 |---|---|
 | **Avant** | Canari à 100 %, latence nominale, score d'anomalie bas, transactions OK |
-| **Pendant** | Hausse du trafic et de la latence, erreurs, canari en échec, score ML au-dessus du seuil, alerte levée (cible : chemin DoS → ML à démontrer après calibrage) |
+| **Pendant** | Hausse du trafic et de la latence, erreurs, canari en échec, score ML au-dessus du seuil, alerte levée |
 | **Remédiation** | Playbook exécuté (ban de l'IP source, relance du service), étapes affichées en temps réel |
 | **Après** | Canari revenu à 100 %, nouvelle transaction de contrôle réussie, incident clôturé |
 
 Mode opératoire, cible autorisée et paramètres : voir [`attack/README.md`](attack/README.md).
 
-> **État (22/10)** : la boucle de reprise est prouvée en conteneurs en arrêtant `payment-api` (reprise autonome en 67 s environ, [`docs/test-results/repetition-boucle-reprise.md`](docs/test-results/repetition-boucle-reprise.md)). Avec le DoS, l'attaque doit **réellement dégrader** le service : un flood entièrement absorbé par les limites de débit du WAF et du frontal ne fait pas dépasser le seuil du détecteur ML. Réglages et mesures : [`docs/test-results/calibrage-attaque-dos.md`](docs/test-results/calibrage-attaque-dos.md).
+> **État (22/10)** : la boucle complète est **démontrée sur une vraie attaque** : DoS envoyé sur le WAF du point d'accès, détection par le ML, ban de l'attaquant et relance de payment-api par Ansible, transaction de contrôle `COMPLETED`, en 37 à 75 s (6 essais sur 6, [`repetition-generale.md`](docs/test-results/repetition-generale.md)). Condition : limites de débit relâchées pour laisser l'attaque atteindre le service ; aux réglages par défaut, le WAF absorbe le flood et la règle SOC bannit l'attaquant en ~5 s ([`calibrage-attaque-dos.md`](docs/test-results/calibrage-attaque-dos.md)).
 
 **Scénario complémentaire** : tentative d'injection applicative bloquée par le WAF et remontée dans le SOC. Ce cas illustre une réponse différente : il ne s'agit pas de restaurer la disponibilité mais de bloquer, tracer et qualifier une tentative de compromission.
 
@@ -496,14 +496,15 @@ Le script reproduit la CI : chaque dossier qui contient `tests/` est testé avec
 
 | Suite | Tests |
 |---|---|
-| `services/remediation-engine` | 28 |
+| `services/remediation-engine` | 34 |
 | `attack` (garde-fou de cible, flood) | 20 |
 | `services/dashboard` (vitest) | 19 |
 | `biometrics/gateway` | 16 |
 | `assistant-rag` | 13 |
-| `ml/detector` | 12 |
+| `ml/detector` | 16 |
+| `ml/training` | 6 |
 | `services/frontend` (vitest) | 12 |
-| `tests/e2e` (logique du scénario, réseau simulé) | 11 |
+| `tests/e2e` (scénario et calibrage, réseau simulé) | 26 |
 | `services/auth-service`, `services/canary`, `services/payment-api` | 4, 4, 3 |
 
 **Tests sur la stack démarrée** (Docker) :

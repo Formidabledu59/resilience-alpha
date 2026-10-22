@@ -6,7 +6,8 @@
 | Document | Objet | Conclusion |
 |---|---|---|
 | [`repetition-boucle-reprise.md`](repetition-boucle-reprise.md) | Répétition de la boucle de reprise en conteneurs (arrêt d'un service) | Reprise autonome prouvée en ~67 s (transaction de contrôle COMPLETED) |
-| [`calibrage-attaque-dos.md`](calibrage-attaque-dos.md) | Calibrage de l'attaque DoS applicative | WAF absorbe la charge ; calibrage réseau à finaliser pour déclencher le chemin ML |
+| [`calibrage-attaque-dos.md`](calibrage-attaque-dos.md) | Calibrage de l'attaque DoS applicative (22/10, point d'accès actif) | Réglages par défaut : WAF absorbe, SOC bannit en ~5 s. Limites relâchées, concurrence 200 : alerte ML (0,78) |
+| [`repetition-generale.md`](repetition-generale.md) | Répétition générale chronométrée, 4 séries de 3 essais (22/10) | **6/6 réussis** sur les deux dernières séries, détection ML, 37 à 75 s ; 3 défauts trouvés et corrigés |
 
 ## Convention
 
@@ -16,6 +17,8 @@ reliés à leur script (`attack/`, `tests/e2e/`) ou à leur procédure (`docs/ru
 
 ## À compléter
 
-- Scénario de bout en bout `tests/e2e/resilience_scenario.py` rejoué depuis le PC Attaquant, sur
-  le réseau `RESILIENCE-G16`, avec un DoS calibré déclenchant le détecteur ML.
+- **Attaque lancée depuis le PC Attaquant** (poste distinct, connecté à `RESILIENCE-G16`), exigée
+  par le sujet. Les essais du 22/10 envoyaient l'attaque depuis le PC Hôte vers sa propre adresse
+  `192.168.137.1` : même chemin réseau jusqu'au WAF, mais la latence du WiFi peut modifier le
+  calibrage. Commande : `python attack/dos/flood.py --target http://192.168.137.1 --auth demo --duration 90 --concurrency 200`.
 - Essai de l'assistant RAG avec Ollama lancé (qualité des réponses, sources citées).

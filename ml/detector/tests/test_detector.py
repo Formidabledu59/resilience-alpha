@@ -110,3 +110,37 @@ def test_prometheus_injoignable_ne_plante_pas():
 
     result = asyncio.run(scenario())
     assert result == {"prometheus_ok": False, "score": None, "alert": False}
+
+
+def _ticks(detector, client, sequence, start=100, step=5):
+    async def scenario():
+        async with client:
+            results = []
+            for i, value in enumerate(sequence):
+                features_ref["value"] = value
+                results.append(await detector.tick(now=start + i * step))
+            return results
+    return asyncio.run(scenario())
+
+
+features_ref = {"value": NOMINAL, "ok": True}
+
+
+def test_pas_de_nouvelle_alerte_tant_que_le_score_reste_haut():
+    # Répétition du 22/10 : après un incident clos, les moyennes sur 1 min gardaient la trace de
+    # l'attaque ; le détecteur réalertait chaque minute et relançait une remédiation inutile.
+    sent = []
+    detector, client = make_detector(lambda r: sent.append(r) or httpx.Response(202, json={}), features_ref)
+    results = _ticks(detector, client, [DOS] * 40)          # 200 s d'anomalie continue
+    assert sum(r["alert"] for r in results) == 1
+    assert len(sent) == 1
+
+
+def test_realerte_apres_retour_au_calme():
+    sent = []
+    detector, client = make_detector(lambda r: sent.append(r) or httpx.Response(202, json={}), features_ref)
+    sequence = [DOS] * 3 + [NOMINAL] * 3 + [DOS] * 3 + [NOMINAL] * 2 + [DOS] * 20
+    results = _ticks(detector, client, sequence, step=30)    # au-delà du délai de 60 s entre alertes
+    assert [i for i, r in enumerate(results) if r["alert"]] == [2, 8]
+    # La 2e attaque n'est suivie que de 2 relevés calmes (< 3) : pas de 3e alerte.
+    assert len(sent) == 2

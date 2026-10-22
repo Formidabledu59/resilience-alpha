@@ -71,9 +71,10 @@ class Observer:
         limited = await self.loki(f'sum(count_over_time({WAF_ACCESS} | status="429" [{window}]))')
         rules = await self.loki(f"sum by (rule) (count_over_time({WAF_AUDIT_RULES} [{window}]))")
         clients = await self.loki(f'sum by (client) (count_over_time({WAF_ACCESS} | status=~"403|429" [{window}]))')
+        talkers = await self.loki(f"sum by (client) (count_over_time({WAF_ACCESS} [{window}]))")  # toutes requêtes
         auth = await self.loki(f"sum(count_over_time({AUTH_FAILURES} [{window}]))")
 
-        loki_ok = any(r is not None for r in (blocked, limited, rules, clients, auth))
+        loki_ok = any(r is not None for r in (blocked, limited, rules, clients, talkers, auth))
         return {
             "window_seconds": int(window[:-1]),
             "sources": {"prometheus": any(v is not None for v in metrics.values()), "loki": loki_ok},
@@ -83,6 +84,7 @@ class Observer:
                 "rate_limited_429": _total(limited),
                 "rules": _by_label(rules, "rule"),
                 "clients": [{"ip": c["client"], "count": c["count"]} for c in _by_label(clients, "client")[:5]],
+                "top_clients": [{"ip": c["client"], "count": c["count"]} for c in _by_label(talkers, "client")[:5]],
             },
             "auth_failures": _total(auth),
         }

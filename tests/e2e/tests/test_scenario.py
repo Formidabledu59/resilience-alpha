@@ -53,9 +53,10 @@ def test_un_ancien_incident_clos_ne_donne_pas_un_faux_succes(monkeypatch):
     ancien = {"id": "inc-ancien", "status": "CLOSED"}
     monkeypatch.setattr(sc, "incidents", lambda dashboard: [ancien])
     monkeypatch.setattr(sc, "prometheus_scalar", lambda *a: None)
-    ok, message = sc.wait_for_recovery(make_args(), sc.time.monotonic() + 0.05, ignore={"inc-ancien"})
+    ok, message, incident = sc.wait_for_recovery(make_args(), sc.time.monotonic() + 0.05, ignore={"inc-ancien"})
     assert not ok
     assert "aucun incident" in message
+    assert incident is None
 
 
 def test_nouvel_incident_ouvert_puis_clos(monkeypatch):
@@ -64,13 +65,14 @@ def test_nouvel_incident_ouvert_puis_clos(monkeypatch):
                   [{"id": "inc-1", "status": "CLOSED"}]])
     monkeypatch.setattr(sc, "incidents", lambda dashboard: next(etats))
     monkeypatch.setattr(sc, "prometheus_scalar", lambda *a: None)
-    ok, message = sc.wait_for_recovery(make_args(), sc.time.monotonic() + 30)
+    ok, message, incident = sc.wait_for_recovery(make_args(), sc.time.monotonic() + 30)
     assert ok and "inc-1" in message
+    assert incident["status"] == "CLOSED"
 
 
 def test_incident_en_echec(monkeypatch):
     monkeypatch.setattr(sc, "incidents", lambda dashboard: [{"id": "inc-2", "status": "FAILED"}])
-    ok, _ = sc.wait_for_recovery(make_args(), sc.time.monotonic() + 30)
+    ok, _, _ = sc.wait_for_recovery(make_args(), sc.time.monotonic() + 30)
     assert not ok
 
 
@@ -125,3 +127,78 @@ def test_prometheus_scalar(monkeypatch):
         raise httpx.ConnectError("refusé")
     monkeypatch.setattr(httpx, "get", injoignable)
     assert sc.prometheus_scalar("http://p", "q") is None
+
+
+def test_chronometrage_depuis_le_journal():
+    debut = sc.datetime(2026, 10, 22, 9, 0, 0, tzinfo=sc.timezone.utc)
+    incident = {"opened_at": "2026-10-22T09:00:25+00:00", "closed_at": "2026-10-22T09:00:52+00:00"}
+    t = sc.timings(debut, incident)
+    assert (t["detection"], t["recovery"], t["total"]) == (25, 27, 52)
+    assert t["fits_clip"] is True
+    lent = sc.timings(debut, {"opened_at": "2026-10-22T09:00:40+00:00", "closed_at": "2026-10-22T09:01:30+00:00"})
+    assert lent["total"] == 90 and lent["fits_clip"] is False
+
+
+def test_chronometrage_incident_non_clos():
+    debut = sc.datetime(2026, 10, 22, 9, 0, 0, tzinfo=sc.timezone.utc)
+    t = sc.timings(debut, {"opened_at": "2026-10-22T09:00:30+00:00", "closed_at": None})
+    assert t["detection"] == 30 and t["recovery"] is None and t["fits_clip"] is False
+
+
+def test_qui_a_detecte():
+    assert sc.detected_by({"source": "ml-detector", "alerts": [{"source": "ml-detector"}]}) == "ML (Isolation Forest)"
+    assert sc.detected_by({"source": "alertmanager", "alerts": [{"source": "alertmanager", "name": "TargetDown"}]}) == "TargetDown"
+
+
+def test_rapport_markdown():
+    resultats = [
+        {"ok": True, "message": "ok", "incident": "inc-1", "detected_by": "ML (Isolation Forest)",
+         "timings": {"detection": 25, "recovery": 27, "total": 52, "fits_clip": True}},
+        {"ok": False, "message": "aucun incident déclenché", "incident": None},
+    ]
+    texte = sc.report_markdown(resultats, make_args())
+    assert "| 1 | OK | ML (Isolation Forest) | 25 s | 27 s | 52 s | oui | inc-1 |" in texte
+    assert "| 2 | ÉCHEC | - | - | - | - | non | - |" in texte
+    assert "**1/2 essais réussis.**" in texte
+    assert "Essai 2 : aucun incident déclenché" in texte
+
+
+def test_attaque_qui_meurt_en_cours_arrete_l_attente(monkeypatch):
+    # Cas réel du 22/10 : login de flood.py en ConnectTimeout après ~5 s, l'attente durait 5 min pour rien.
+    import subprocess
+    attaque = subprocess.Popen([sys.executable, "-c", "raise SystemExit(1)"])
+    attaque.wait()
+    monkeypatch.setattr(sc, "incidents", lambda dashboard: [])
+    monkeypatch.setattr(sc, "prometheus_scalar", lambda *a: None)
+    ok, message, incident = sc.wait_for_recovery(make_args(), sc.time.monotonic() + 30, attack=attaque)
+    assert not ok and "code 1" in message and incident is None
+
+
+def test_attaque_terminee_normalement_n_est_pas_une_erreur():
+    import subprocess
+    attaque = subprocess.Popen([sys.executable, "-c", "pass"])
+    attaque.wait()
+    assert sc.attack_failed(attaque) is None
+    assert sc.attack_failed(None) is None
+
+
+def test_transaction_finale_tolere_une_coupure_breve(monkeypatch):
+    # Cas réel du 22/10 : point d'accès redémarré, WAF recréé, requête en timeout.
+    appels = {"n": 0}
+
+    def login(waf, password):
+        appels["n"] += 1
+        if appels["n"] == 1:
+            raise httpx.ConnectTimeout("timed out")
+        return "jeton"
+    monkeypatch.setattr(sc, "login", login)
+    monkeypatch.setattr(sc, "business_transaction", lambda waf, token: {"status": "COMPLETED"})
+    assert sc.final_transaction("http://192.168.137.1", "x", ban_wait=60, poll=0)["status"] == "COMPLETED"
+
+
+def test_coupure_persistante_remonte_l_erreur(monkeypatch):
+    def login(waf, password):
+        raise httpx.ConnectTimeout("timed out")
+    monkeypatch.setattr(sc, "login", login)
+    with pytest.raises(httpx.TransportError):
+        sc.final_transaction("http://192.168.137.1", "x", ban_wait=0, poll=0)

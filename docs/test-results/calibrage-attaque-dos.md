@@ -72,6 +72,7 @@ Revue du code, sans Docker. Les scores ci-dessous sont calculés avec le modèle
 |---|---|---|
 | `ML_ANOMALY_THRESHOLD` | 0,7 | Seuil d'alerte du détecteur |
 | `BAN_MIN_REQUESTS` | 100 | Refus WAF (403/429) à partir desquels une IP est bannie |
+| `BAN_MIN_FLOOD_REQUESTS` | 1000 | Requêtes (toutes réponses) à partir desquelles une IP est bannie, même sans refus (ajouté le 22/10 : avec les limites relâchées, l'attaquant n'était pas banni) |
 | `BAN_MINUTES` | 5 | Durée du ban avant levée automatique |
 | `VERIFY_TIMEOUT_SECONDS` | 180 | Délai maximal de retour au nominal avant la transaction de contrôle |
 
@@ -88,3 +89,58 @@ ATTACK_PASSWORD='<mot de passe demo>' python tests/e2e/resilience_scenario.py --
 ```
 
 Noter ici les réglages retenus et le résultat (score ML maximal, `canary_up`, identifiant et durée de l'incident).
+
+## Calibrage réel du 22 octobre 2026 (point d'accès actif)
+
+PC Hôte, point d'accès `RESILIENCE-G16` actif, attaque envoyée sur `http://192.168.137.1` (WAF), stack complète, modèle ML entraîné sur 20 minutes de trafic nominal réel (121 relevés, `ml_model_fallback = 0`). Outil : `tests/e2e/calibrate_dos.py`, flood authentifié.
+
+### Réglages par défaut (WAF 50 r/s, frontal 10 r/s par IP)
+
+| Concurrence | Requêtes | Réponses | Score ML max | Canari | Ce qui s'est passé |
+|---|---|---|---|---|---|
+| 100 | 12 945 en 60 s | 620 × 201, 12 325 × **429** | 0,43 | intact (100 %) | La règle SOC `WafRateLimitSature` détecte la saturation : **ban en 5 s**, transaction de contrôle `COMPLETED`, incident `CLOSED` (inc-2026-10-22-001) |
+| 200 | 11 169 | 51 × 201, 8 255 × 429, 2 861 × **403** | 0,43 | intact | L'attaquant est déjà banni : ses requêtes sont refusées en 403 |
+
+**Lecture** : les limites de débit absorbent l'attaque, le service n'est jamais dégradé, le **ML ne déclenche pas** (comportement voulu : pas d'incident ML sur une attaque contenue). La défense passe par le **SOC** (Loki → Alertmanager → ban), en boucle fermée et sans intervention.
+
+Défaut relevé : les 403 du ban ont ouvert un second incident classé « attaque applicative » (`WafBlocagesModSecurity`, inc-2026-10-22-002), alors qu'il s'agit de la suite du DoS. Sans conséquence (aucune action, clos en 1 s), mais à expliquer si le jury consulte le journal.
+
+### Limites de débit relâchées (WAF et frontal à 2 000 r/s)
+
+| Concurrence | Score ML max | Relevés ≥ 0,7 | Canari (succès min) | Latence p95 max | Alerte ML |
+|---|---|---|---|---|---|
+| 200 | **0,78** | 3 | 83 % | 0,36 s (×7) | **oui** |
+
+Incident `inc-2026-10-22-003`, ouvert par le **détecteur ML** (alerte signée HMAC) :
+
+```
+09:03:24  Alerte reçue : AnomalieML (HMAC valide)   score 0,78 au-delà du seuil 0,70
+09:03:28  Playbook ban_ip.yml                       172.23.0.1 bannie au WAF pour 5 minutes
+09:03:32  Playbook restart_api.yml                  payment-api redémarré
+09:03:47  Vérification canary_up                    1 sur 3 relevés (taux sur 60 s encore à 75 %)
+09:03:47  Transaction de contrôle (POST /probe)     COMPLETED
+09:03:47  Incident CLOSED                           23 s après l'alerte
+```
+
+**Le chemin attaque → détection ML → remédiation → transaction de contrôle est démontré.** Sans le nouveau critère de vérification (3 relevés consécutifs), le moteur aurait attendu environ une minute de plus que le taux de succès sur 60 s remonte à 95 %.
+
+### Réglage proposé pour la démonstration (à valider par l'équipe)
+
+Deux voies automatiques, toutes deux démontrées :
+
+| Réglage | Détection | Intérêt pour le jury |
+|---|---|---|
+| Limites par défaut | SOC (`WafRateLimitSature`), ban en ~5 s | Défense en profondeur : le WAF tient, le SOC réagit |
+| Limites relâchées (`WAF_RATE_LIMIT` et `FRONTEND_API_RATE_LIMIT` à 2000r/s, rafales à 4000) | **ML** (score 0,78), ban + relance, reprise prouvée en ~23 s | Montre le ML branché sur la remédiation (axe 2 de la grille) |
+
+Pour la démonstration en direct et le Clip Chrono, nous proposons les **limites relâchées, concurrence 200** : c'est le scénario qui fait intervenir la détection par apprentissage. À annoncer au jury : les limites de débit sont volontairement relâchées pour laisser l'attaque atteindre le service ; en production, elles restent la première ligne de défense (premier tableau).
+
+## Calibrage automatique du 22/10/2026 09:03 UTC
+
+Flood authentifié, 60 s par palier, cible http://192.168.137.1, seuil ML 0.7.
+
+| Concurrence | Score ML max | Relevés ≥ seuil | Canari (succès min) | Canari tombé | Latence p95 max | Alerte ML |
+|---|---|---|---|---|---|---|
+| 200 | 0.78 | 3 | 83% | non | 0.36 s | **oui** |
+
+**Réglage retenu : concurrence 200** (premier palier qui déclenche la détection ML).

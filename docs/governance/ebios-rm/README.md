@@ -96,9 +96,11 @@ Déclinaison technique des scénarios stratégiques (séquence réelle d'une att
 4. Le moteur bannit la source au WAF, relance payment-api, vérifie le canari, exécute une
    transaction de contrôle.
 
-> **Scénario cible, pas encore démontré de bout en bout.** Aux réglages par défaut, le WAF et le
-> frontal absorbent le flood : le canari reste à 1 et le score ML ne dépasse pas 0,3. Le
-> calibrage sur le réseau du groupe est en cours ([`calibrage-attaque-dos.md`](../../test-results/calibrage-attaque-dos.md)).
+> **Démontré le 22/10** ([répétition générale](../../test-results/repetition-generale.md)) : 6 essais
+> réussis sur 6, détection par le ML, ban de l'attaquant, relance, transaction de contrôle
+> `COMPLETED`. Condition : limites de débit relâchées pour la démonstration. Aux réglages par
+> défaut, le WAF et le frontal absorbent le flood (le canari reste à 1, score ML ≤ 0,43) et c'est
+> la règle SOC qui bannit l'attaquant en ~5 s ([calibrage](../../test-results/calibrage-attaque-dos.md)).
 
 ### SO2 - Injection SQL / XSS (dérivé de SS2)
 
@@ -127,8 +129,8 @@ Déclinaison technique des scénarios stratégiques (séquence réelle d'une att
 | Mesure | Scénarios couverts | État | Preuve |
 |---|---|---|---|
 | WAF ModSecurity + OWASP CRS, rate-limit | SO1, SO2, SO3 | Fait, vérifié | `attack/sqli/inject.py` (403), `security/waf/README.md` |
-| Détection d'anomalies (Isolation Forest) | SO1 | Implémenté, **non démontré sur DoS** | `ml/detector/tests/`, `calibrage-attaque-dos.md` |
-| Remédiation autonome (ban IP, restart, vérification canari) | SO1, SO3 | Restart démontré (panne de service) ; ban sur DoS et force brute **non démontrés** | `repetition-boucle-reprise.md`, `services/remediation-engine/tests/` |
+| Détection d'anomalies (Isolation Forest) | SO1 | Fait, **démontré sur DoS** (22/10, 6/6) | `repetition-generale.md`, `ml/detector/tests/` |
+| Remédiation autonome (ban IP, restart, vérification canari) | SO1, SO3 | Démontrée sur panne de service (21/10) et sur DoS (22/10) ; force brute **non testée** | `repetition-generale.md`, `repetition-boucle-reprise.md` |
 | Règles SOC (Loki) + alertes (Alertmanager) | SO1, SO2, SO3 | Fait, vérifié (inactive → pending → firing) | `security/soc-rules/README.md` |
 | Vault (secrets chiffrés, lecture seule par service) | ER3, SO4 | Fait, vérifié | `security/vault/README.md` |
 | Segmentation réseau, moindre privilège, non-root, read-only | SO4 | Fait | `docker-compose.yml`, `security/hardening.md` |
@@ -141,7 +143,7 @@ Vraisemblance et gravité après mesures (échelle 1 à 4).
 
 | Scénario | Gravité | Vraisemblance résiduelle | Risque résiduel |
 |---|---|---|---|
-| SO1 DoS applicatif | 4 | 2 (absorbé par le WAF aux réglages par défaut ; reprise auto démontrée sur panne, pas encore sur DoS) | Moyen |
+| SO1 DoS applicatif | 4 | 2 (absorbé par le WAF et banni par le SOC aux réglages par défaut ; détecté par le ML et remédié en 37 à 75 s quand l'attaque passe) | Moyen |
 | SO2 Injection web | 4 | 1 (bloqué par le CRS) | Faible |
 | SO3 Force brute | 3 | 1 (rate-limit + SOC) | Faible |
 | SO4 Compromission conteneur | 4 | 2 (durcissement, pas éliminé) | Moyen |

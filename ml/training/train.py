@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "detector"))
-from anomaly import FEATURE_NAMES, fit, synthetic_nominal  # noqa: E402
+from anomaly import FEATURE_NAMES, fit, synthetic_nominal, with_noise_floor  # noqa: E402
 from model_store import save  # noqa: E402
 
 
@@ -47,7 +47,8 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.data and not args.synthetic:
-        data = load_csv(Path(args.data))
+        # Plancher de variabilité : les colonnes constantes du nominal réel resteraient ignorées.
+        data = with_noise_floor(load_csv(Path(args.data)), seed=args.seed)
         source = f"csv:{args.data}:{len(data)}releves"
     else:
         data = synthetic_nominal(seed=args.seed)

@@ -55,10 +55,14 @@ Ordre de priorité retenu (événements redoutés EBIOS) :
 
 ## 5. Limites à connaître avant de décider
 
-- Le chemin **DoS → détection ML → remédiation** est implémenté et testé unitairement, mais **pas
-  encore démontré de bout en bout** : aux réglages par défaut, le WAF absorbe l'attaque
-  ([calibrage](../test-results/calibrage-attaque-dos.md)). Le chemin **panne de service →
-  remédiation → transaction de contrôle** est démontré ([répétition du 21/10](../test-results/repetition-boucle-reprise.md)).
+- Le chemin **DoS → détection ML → remédiation** est démontré (6 essais sur 6, [répétition du
+  22/10](../test-results/repetition-generale.md)), mais avec des **limites de débit volontairement
+  relâchées** : aux réglages par défaut, le WAF absorbe l'attaque et c'est la règle SOC qui bannit
+  l'attaquant ([calibrage](../test-results/calibrage-attaque-dos.md)). Le chemin **panne de service
+  → remédiation → transaction de contrôle** est démontré ([répétition du 21/10](../test-results/repetition-boucle-reprise.md)).
+- La répétition a révélé et fait corriger trois défauts que les tests unitaires ne voyaient pas
+  (vérification sur métriques périmées, réalertes en boucle, attaquant non banni) : argument pour
+  la recommandation n°6 (tests de résilience réguliers en conditions réelles).
 - Les montants d'impact (PCA/PRA §2) reposent sur des **hypothèses fictives** à valider avec le
   métier.
 - Une reprise automatique ne prouve pas l'absence de compromission (PCA/PRA §3 ter).

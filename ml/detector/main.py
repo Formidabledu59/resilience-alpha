@@ -31,6 +31,10 @@ THRESHOLD = float(os.environ.get("ML_ANOMALY_THRESHOLD", "0.7"))
 INTERVAL = float(os.environ.get("ML_INTERVAL_SECONDS", "5"))
 CONSECUTIVE = int(os.environ.get("ML_ALERT_CONSECUTIVE", "3"))  # relevés consécutifs avant d'alerter
 COOLDOWN = float(os.environ.get("ML_ALERT_COOLDOWN_SECONDS", "60"))  # délai minimal entre deux alertes
+# Réarmement : après une alerte, la suivante n'est possible qu'une fois le score redescendu sous
+# le seuil pendant N relevés. Sans cela, la traîne d'une attaque déjà traitée (moyennes sur 1 min)
+# relançait une remédiation inutile chaque minute (répétition du 22/10).
+REARM = int(os.environ.get("ML_ALERT_REARM", "3"))
 
 ANOMALY_SCORE = Gauge("ml_anomaly_score", "Score d'anomalie courant, de 0 (normal) à 1 (anormal)")
 ANOMALY_THRESHOLD = Gauge("ml_anomaly_threshold", "Seuil au-delà duquel une alerte est envoyée")
@@ -54,6 +58,8 @@ class Detector:
         self.client = client
         self.secret = secret
         self.breaches = 0        # relevés consécutifs au-dessus du seuil
+        self.calm = 0            # relevés consécutifs sous le seuil
+        self.armed = True        # faux après une alerte, jusqu'au retour au calme
         self.last_alert = 0.0
 
     async def tick(self, now: float | None = None) -> dict:
@@ -69,13 +75,17 @@ class Detector:
         score = score_one(self.model, self.normalizer, features)
         ANOMALY_SCORE.set(score)
         self.breaches = self.breaches + 1 if score >= THRESHOLD else 0
+        self.calm = self.calm + 1 if score < THRESHOLD else 0
+        if self.calm >= REARM:
+            self.armed = True
 
         alert = False
-        if self.breaches >= CONSECUTIVE and now - self.last_alert >= COOLDOWN:
+        if self.armed and self.breaches >= CONSECUTIVE and now - self.last_alert >= COOLDOWN:
             alert = await self.send_alert(score, features, now)
             if alert:
                 self.last_alert = now
-        return {"prometheus_ok": True, "score": score, "breaches": self.breaches, "alert": alert}
+                self.armed = False
+        return {"prometheus_ok": True, "score": score, "breaches": self.breaches, "armed": self.armed, "alert": alert}
 
     async def send_alert(self, score: float, features: dict, now: float) -> bool:
         body = json.dumps({

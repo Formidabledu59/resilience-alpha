@@ -319,7 +319,17 @@ Le jury note surtout l'**axe 1** (5 points) : attaque depuis le PC Attaquant, d�
 ### La veille (répétition générale, à refaire jusqu'à 3 succès d'affilée)
 
 1. Point d'accès `RESILIENCE-G16` actif, **puis** Docker Desktop. `.env` : `WAF_BIND_IP=192.168.137.1`.
-2. Réglages de démonstration retenus dans `.env` (à noter dans [`calibrage-attaque-dos.md`](docs/test-results/calibrage-attaque-dos.md)) : `FRONTEND_API_RATE_LIMIT`, `FRONTEND_API_BURST`.
+   - **Désactiver l'économie d'énergie du point d'accès** (Paramètres → Réseau et Internet → Point d'accès sans fil mobile → Économie d'énergie : désactivé). Sinon Windows l'éteint après ~5 minutes sans appareil connecté : `192.168.137.1` disparaît et le WAF ne répond plus (il faut alors le recréer : `docker compose --profile app up -d --force-recreate waf`).
+   - Vérifier que le nom du réseau est bien `RESILIENCE-G16` (Windows propose un nom par défaut).
+   - **`.env` à jour** : un `.env` créé avant les dernières versions peut manquer de variables. Cette commande liste celles qui manquent (elle ne doit rien afficher) :
+     ```powershell
+     $env_ = (Get-Content .env) -replace '=.*',''; (Get-Content .env.example | Where-Object { $_ -match '^[A-Z_]+=' }) -replace '=.*','' | Where-Object { $_ -notin $env_ }
+     ```
+2. Réglages de démonstration dans `.env`, mesurés le 22/10 ([`calibrage-attaque-dos.md`](docs/test-results/calibrage-attaque-dos.md)) :
+   - **pour montrer la détection ML** (proposé) : `WAF_RATE_LIMIT=2000r/s`, `WAF_RATE_BURST=4000`, `FRONTEND_API_RATE_LIMIT=2000r/s`, `FRONTEND_API_BURST=4000`, attaque à concurrence 200 → alerte ML (score 0,78), ban + relance, reprise prouvée en ~23 s ;
+   - limites par défaut (50 r/s et 10 r/s) : l'attaque est absorbée, la règle SOC bannit l'attaquant en ~5 s, le ML ne déclenche pas.
+
+   Après un changement : `docker compose --profile app up -d waf frontend`.
 3. Stack complète (étape 5), puis **modèle ML entraîné sur du vrai trafic** (30 min sans attaque) :
    ```powershell
    pip install -r ml/detector/requirements.txt
@@ -328,8 +338,19 @@ Le jury note surtout l'**axe 1** (5 points) : attaque depuis le PC Attaquant, d�
    docker compose --profile ia restart ml-detector
    ```
    Dans Prometheus, `ml_model_fallback` doit valoir `0`.
-4. Scénario complet sur le PC Hôte (étape 9) : code de sortie 0, et **chronométrer** du lancement de l'attaque à l'incident `CLOSED`.
-5. Depuis le PC Attaquant, rejouer l'attaque seule en filmant l'écran du PC Hôte : c'est la prise du Clip Chrono.
+4. **Calibrer le DoS** (trouve la charge qui déclenche la détection ML) :
+   ```powershell
+   pip install -r tests/e2e/requirements.txt
+   $env:ATTACK_PASSWORD = (Select-String -Path .env -Pattern '^AUTH_DEMO_PASSWORD=(.*)').Matches[0].Groups[1].Value
+   python tests/e2e/calibrate_dos.py --report docs/test-results/calibrage-attaque-dos.md
+   ```
+   Si aucun palier ne déclenche : relâcher `FRONTEND_API_RATE_LIMIT` / `FRONTEND_API_BURST` dans `.env`, `docker compose --profile app up -d frontend`, relancer.
+5. **Trois essais chronométrés d'affilée**, avec la concurrence retenue :
+   ```powershell
+   python tests/e2e/resilience_scenario.py --runs 3 --concurrency <retenue> --report docs/test-results/repetition-generale.md
+   ```
+   Le tableau indique qui a détecté (ML attendu), les durées et si la boucle tient dans les 60 s du clip.
+6. Depuis le PC Attaquant, rejouer l'attaque seule en filmant l'écran du PC Hôte : c'est la prise du Clip Chrono.
 
 ### Budget de temps du Clip Chrono (60 s, plan continu, sans coupe)
 
