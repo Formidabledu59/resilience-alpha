@@ -15,7 +15,7 @@ async def run_incident(tmp_path, observer, probe_result, executor=None, name="Wa
         return probe_result
 
     engine = Engine(Journal(tmp_path / "j.jsonl", echo=False), observer, probe, executor=executor,
-                    verify_timeout=0.05, poll_interval=0.01)
+                    verify_timeout=1.0, poll_interval=0.01)
     incident_id = await engine.receive(alert(name))
     await asyncio.gather(*engine.tasks)
     return engine, engine.journal.get(incident_id)
@@ -67,7 +67,7 @@ def test_alerte_de_meme_categorie_rattachee_a_l_incident_actif(tmp_path, observe
         async def probe():
             return {"ok": True, "status": "COMPLETED"}
 
-        engine = Engine(Journal(tmp_path / "j.jsonl", echo=False), observer, probe, verify_timeout=0.05, poll_interval=0.01)
+        engine = Engine(Journal(tmp_path / "j.jsonl", echo=False), observer, probe, verify_timeout=1.0, poll_interval=0.01)
         first = await engine.receive(alert(fingerprint="a"))
         second = await engine.receive(alert(fingerprint="b"))
         other = await engine.receive(alert("WafRateLimitSature", fingerprint="c"))
@@ -122,3 +122,42 @@ def test_canari_instable_ne_valide_pas_la_reprise(tmp_path):
     observer = SequenceObserver(states)
     _, incident = asyncio.run(run_incident(tmp_path, observer, {"ok": True, "status": "COMPLETED"}))
     assert incident["status"] == "FAILED"
+
+
+def test_metriques_anterieures_au_redemarrage_ne_valident_pas_la_reprise(tmp_path):
+    # Répétition du 22/10 (inc-2026-10-22-005) : juste après restart_api.yml, Prometheus montrait
+    # encore canary_up = 1 et 100 % de succès sur 60 s ; la vérification passait au 1er relevé et
+    # la transaction de contrôle tombait sur payment-api en cours de redémarrage (HTTP 502).
+    observer = SequenceObserver([(1, 1.0), (0, 0.9), (1, 0.9), (1, 0.9), (1, 0.9)])
+    ok = {"ok": True, "status": "COMPLETED", "transaction_id": 12, "latency_seconds": 0.03}
+    _, incident = asyncio.run(run_incident(tmp_path, observer, ok))
+    assert incident["status"] == "CLOSED"
+    verification = next(s for s in incident["steps"] if s["action"] == "Vérification canary_up")
+    assert verification["result"].startswith("1 sur 3")   # pas validé sur la mesure périmée
+
+
+def test_transaction_de_controle_reessayee_apres_un_echec_passager(tmp_path, observer):
+    reponses = iter([{"ok": False, "status": "ERROR", "detail": "HTTP 502"},
+                     {"ok": True, "status": "COMPLETED", "transaction_id": 13, "latency_seconds": 0.03}])
+
+    async def scenario():
+        async def probe():
+            return next(reponses)
+        engine = Engine(Journal(tmp_path / "j.jsonl", echo=False), observer, probe,
+                        verify_timeout=1.0, poll_interval=0.01)
+        incident_id = await engine.receive(alert())
+        await asyncio.gather(*engine.tasks)
+        return engine.journal.get(incident_id)
+
+    incident = asyncio.run(scenario())
+    assert incident["status"] == "CLOSED"
+    actions = [s["action"] for s in incident["steps"]]
+    assert "Transaction de contrôle (essai 1/3)" in actions          # l'échec reste tracé
+    assert actions.count("Transaction de contrôle (POST /probe)") == 1
+
+
+def test_transaction_de_controle_toujours_en_echec(tmp_path, observer):
+    ko = {"ok": False, "status": "ERROR", "detail": "HTTP 502"}
+    _, incident = asyncio.run(run_incident(tmp_path, observer, ko))
+    assert incident["status"] == "FAILED"
+    assert [s["action"] for s in incident["steps"]].count("Transaction de contrôle (essai 2/3)") == 1
