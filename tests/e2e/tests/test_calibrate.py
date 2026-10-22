@@ -57,3 +57,22 @@ def test_paliers_par_defaut_croissants():
     args = cal.build_parser().parse_args([])
     assert args.levels == sorted(args.levels)
     assert args.waf.startswith("http://192.168.137.")
+
+
+def test_palier_interrompu_garde_le_rapport(monkeypatch, tmp_path):
+    # Cas réel du 22/10 : l'attaquant banni au palier 200 ne peut plus lancer le palier 400.
+    rapport = tmp_path / "calibrage.md"
+    mesure = {"concurrency": 100, "max_score": 0.43, "above_threshold": 0, "min_canary_ratio": 1.0,
+              "canary_down": False, "max_latency_p95": 0.05, "ml_alert": False}
+
+    def run_level(args, level):
+        if level == 100:
+            return mesure
+        raise cal.AttackNotStarted("attaque non lancée")
+
+    monkeypatch.setattr(cal, "run_level", run_level)
+    monkeypatch.setenv("ATTACK_PASSWORD", "x")
+    monkeypatch.setattr("sys.argv", ["calibrate_dos.py", "--levels", "100", "400", "--report", str(rapport)])
+    assert cal.main() == 1
+    texte = rapport.read_text(encoding="utf-8")
+    assert "| 100 | 0.43 |" in texte and "Aucun palier" in texte

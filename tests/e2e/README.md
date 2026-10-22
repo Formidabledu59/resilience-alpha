@@ -57,6 +57,6 @@ python tests/e2e/calibrate_dos.py --levels 100 200 400 --report docs/test-result
 
 Options : `--levels` (concurrences, défaut 100 200 400), `--seconds` (durée par palier, défaut 60), `--tail-seconds` (observation après l'attaque, défaut 20), `--threshold` (défaut 0,7), `--auth` / `--no-auth`. Code de sortie 0 si un palier déclenche la détection ML. Sinon, relâcher `FRONTEND_API_RATE_LIMIT` et `FRONTEND_API_BURST` dans `.env`, recréer le frontal (`docker compose --profile app up -d frontend`) et relancer.
 
-Tests unitaires du scénario et du calibrage (sans stack, réseau simulé) : `python tests/run_all.py --only e2e` (21 tests).
+Tests unitaires du scénario et du calibrage (sans stack, réseau simulé) : `python tests/run_all.py --only e2e` (26 tests).
 
 > Si aucun incident ne se déclenche, l'attaque n'a pas assez dégradé le service : renforcer la charge et relâcher les rate-limits (voir `docs/test-results/calibrage-attaque-dos.md` et `attack/dos/README.md`).

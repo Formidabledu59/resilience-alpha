@@ -97,6 +97,12 @@ def final_transaction(waf: str, password: str, ban_wait: float, poll: float = 15
                 raise
             print(f"    403 : IP bannie par la remédiation, attente de la levée du ban ({poll:.0f} s)...", flush=True)
             time.sleep(poll)
+        except httpx.TransportError as exc:
+            # Coupure brève (point d'accès qui redémarre, WAF recréé) : on réessaie dans le même délai.
+            if time.monotonic() >= deadline:
+                raise
+            print(f"    {type(exc).__name__} : WAF momentanément injoignable, nouvel essai ({poll:.0f} s)...", flush=True)
+            time.sleep(poll)
 
 
 def control_transaction(dashboard: str) -> dict:
@@ -127,6 +133,14 @@ def launch_attack(args: argparse.Namespace, startup_seconds: float = 3) -> subpr
     return None
 
 
+def attack_failed(attack: subprocess.Popen | None) -> int | None:
+    """Code de sortie si l'attaque s'est arrêtée en erreur (login refusé, WAF injoignable...), sinon None."""
+    if attack is None:
+        return None
+    code = attack.poll()
+    return code if code not in (None, 0) else None
+
+
 def stop_attack(attack: subprocess.Popen) -> None:
     attack.terminate()
     try:
@@ -135,8 +149,8 @@ def stop_attack(attack: subprocess.Popen) -> None:
         attack.kill()
 
 
-def wait_for_recovery(args: argparse.Namespace, deadline: float,
-                      ignore: set[str] = frozenset()) -> tuple[bool, str, dict | None]:
+def wait_for_recovery(args: argparse.Namespace, deadline: float, ignore: set[str] = frozenset(),
+                      attack: subprocess.Popen | None = None) -> tuple[bool, str, dict | None]:
     """Attend qu'un NOUVEL incident s'ouvre puis se clôture (CLOSED).
 
     Renvoie (succès, message, incident). `ignore` contient les incidents déjà présents avant
@@ -158,6 +172,9 @@ def wait_for_recovery(args: argparse.Namespace, deadline: float,
         for incident in failed:
             if incident["id"] == opened:
                 return False, f"incident {opened} en échec (FAILED) : reprise non prouvée", incident
+        code = attack_failed(attack)
+        if opened is None and code is not None:
+            return False, f"l'attaque s'est arrêtée en erreur (code {code}) avant tout incident : WAF joignable ?", None
         score = prometheus_scalar(args.prometheus, "max(ml_anomaly_score)")
         canary = prometheus_scalar(args.prometheus, "canary_up")
         print(f"    score ML={score}  canary_up={canary}  incidents={len(current)}", flush=True)
@@ -253,7 +270,7 @@ def run_once(args: argparse.Namespace, password: str) -> dict:
             return result
 
         step(3, "Attente de la boucle (détection, remédiation, vérification)")
-        recovered, message, incident = wait_for_recovery(args, time.monotonic() + args.timeout, known)
+        recovered, message, incident = wait_for_recovery(args, time.monotonic() + args.timeout, known, attack)
         stop_attack(attack)
         print(f"    {message}")
         result["message"] = message

@@ -35,6 +35,10 @@ QUERIES = {
 }
 
 
+class AttackNotStarted(RuntimeError):
+    """L'attaque n'a pas pu tourner : le palier n'est pas mesurable."""
+
+
 def sample(prometheus: str) -> dict:
     return {name: sc.prometheus_scalar(prometheus, q) for name, q in QUERIES.items()}
 
@@ -88,10 +92,13 @@ def run_level(args: argparse.Namespace, concurrency: int) -> dict:
     print(f"\n== Palier : concurrence {concurrency}, {args.seconds:.0f} s")
     if not sc.wait_nominal(args):
         print("    plateforme pas revenue au nominal, palier ignoré", file=sys.stderr)
+    if args.auth:
+        # Un palier précédent a pu faire bannir l'attaquant (SOC ou ML) : attendre la levée du ban.
+        sc.final_transaction(args.waf, os.environ["ATTACK_PASSWORD"], args.ban_wait)
     attack_args = argparse.Namespace(**{**vars(args), "concurrency": concurrency, "attack_seconds": args.seconds})
     attack = sc.launch_attack(attack_args)
     if attack is None:
-        raise SystemExit("Attaque non lancée (cible hors 192.168.137.0/24 ? ATTACK_PASSWORD ?)")
+        raise AttackNotStarted("attaque non lancée (cible hors 192.168.137.0/24 ? ATTACK_PASSWORD ?)")
     samples = [sample(args.prometheus)]
     deadline = time.monotonic() + args.seconds + args.tail_seconds
     while time.monotonic() < deadline:
@@ -100,6 +107,9 @@ def run_level(args: argparse.Namespace, concurrency: int) -> dict:
         s = samples[-1]
         print(f"    score={s['score']}  canary_up={s['canary_up']}  succès={s['canary_ratio']}  p95={s['latency_p95']}",
               flush=True)
+        code = sc.attack_failed(attack)
+        if code is not None:
+            raise AttackNotStarted(f"l'attaque s'est arrêtée en erreur (code {code}) : WAF joignable sur {args.waf} ?")
         if summarize(samples, args.threshold)["ml_alert"]:
             print("    alerte ML envoyée au moteur de remédiation")
             break
@@ -117,6 +127,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--threshold", type=float, default=0.7, help="Seuil ML (ML_ANOMALY_THRESHOLD)")
     parser.add_argument("--auth", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--poll-seconds", type=float, default=5)
+    parser.add_argument("--ban-wait", type=float, default=sc.DEFAULT_BAN_WAIT,
+                        help="Attente maximale de la levée d'un ban entre deux paliers (s)")
     parser.add_argument("--report", type=Path, help="Ajoute le tableau à ce fichier Markdown")
     return parser
 
@@ -128,7 +140,11 @@ def main() -> int:
         return 1
     rows = []
     for level in sorted(args.levels):
-        rows.append(run_level(args, level))
+        try:
+            rows.append(run_level(args, level))
+        except AttackNotStarted as exc:
+            print(f"    palier {level} interrompu : {exc}", file=sys.stderr)
+            break  # on garde le rapport des paliers déjà mesurés
         if rows[-1]["ml_alert"]:
             break
     table = report_markdown(rows, args)

@@ -161,3 +161,44 @@ def test_rapport_markdown():
     assert "| 2 | ÉCHEC | - | - | - | - | non | - |" in texte
     assert "**1/2 essais réussis.**" in texte
     assert "Essai 2 : aucun incident déclenché" in texte
+
+
+def test_attaque_qui_meurt_en_cours_arrete_l_attente(monkeypatch):
+    # Cas réel du 22/10 : login de flood.py en ConnectTimeout après ~5 s, l'attente durait 5 min pour rien.
+    import subprocess
+    attaque = subprocess.Popen([sys.executable, "-c", "raise SystemExit(1)"])
+    attaque.wait()
+    monkeypatch.setattr(sc, "incidents", lambda dashboard: [])
+    monkeypatch.setattr(sc, "prometheus_scalar", lambda *a: None)
+    ok, message, incident = sc.wait_for_recovery(make_args(), sc.time.monotonic() + 30, attack=attaque)
+    assert not ok and "code 1" in message and incident is None
+
+
+def test_attaque_terminee_normalement_n_est_pas_une_erreur():
+    import subprocess
+    attaque = subprocess.Popen([sys.executable, "-c", "pass"])
+    attaque.wait()
+    assert sc.attack_failed(attaque) is None
+    assert sc.attack_failed(None) is None
+
+
+def test_transaction_finale_tolere_une_coupure_breve(monkeypatch):
+    # Cas réel du 22/10 : point d'accès redémarré, WAF recréé, requête en timeout.
+    appels = {"n": 0}
+
+    def login(waf, password):
+        appels["n"] += 1
+        if appels["n"] == 1:
+            raise httpx.ConnectTimeout("timed out")
+        return "jeton"
+    monkeypatch.setattr(sc, "login", login)
+    monkeypatch.setattr(sc, "business_transaction", lambda waf, token: {"status": "COMPLETED"})
+    assert sc.final_transaction("http://192.168.137.1", "x", ban_wait=60, poll=0)["status"] == "COMPLETED"
+
+
+def test_coupure_persistante_remonte_l_erreur(monkeypatch):
+    def login(waf, password):
+        raise httpx.ConnectTimeout("timed out")
+    monkeypatch.setattr(sc, "login", login)
+    with pytest.raises(httpx.TransportError):
+        sc.final_transaction("http://192.168.137.1", "x", ban_wait=0, poll=0)
