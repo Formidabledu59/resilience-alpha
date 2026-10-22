@@ -23,7 +23,8 @@ alerte (ML signée HMAC, ou Alertmanager avec bearer)
   -> OPEN         incident ouvert, ou alerte rattachée à l'incident actif de même catégorie
   -> preuves      Prometheus + Loki sur la fenêtre [première alerte - 5 min, maintenant]
   -> REMEDIATING  playbooks de la liste blanche selon la catégorie
-  -> VERIFYING    attente canary_up = 1 et taux de succès >= 95 % (180 s max), puis POST /probe au canary
+  -> VERIFYING    attente canary_up = 1 sur 3 relevés consécutifs (~15 s) ou taux de succès >= 95 %
+                  (180 s max), puis POST /probe au canary : seule cette transaction prouve la reprise
   -> CLOSED       si la transaction de contrôle réussit, FAILED sinon
   -> bilan        nouvelles preuves "après", résumé final
 ```
@@ -95,6 +96,7 @@ Chaque playbook se termine par une ligne `RESULT: <texte>` (par exemple « 172.2
 | `PROMETHEUS_URL`, `LOKI_URL`, `CANARY_URL` | Sources des preuves et transaction de contrôle |
 | `JOURNAL_PATH` | Fichier du journal (défaut `/journal/incidents.jsonl`) |
 | `VERIFY_TIMEOUT_SECONDS` | Délai maximal de retour au nominal (défaut 180) |
+| `VERIFY_STABLE_CHECKS` | Relevés consécutifs à `canary_up = 1` qui suffisent avant la transaction de contrôle (défaut 3). Le taux de succès, calculé sur 60 s, mettrait une minute à remonter |
 | `PLAYBOOK_DIR` | Dossier des playbooks (défaut `/ansible/playbooks`) |
 | `BAN_MINUTES` | Durée du ban avant levée automatique (défaut 5) |
 | `BAN_MIN_REQUESTS` | Nombre de refus WAF à partir duquel une IP est bannie (défaut 100) |
@@ -108,4 +110,4 @@ pip install -r requirements.txt pytest
 python -m pytest
 ```
 
-26 tests : chaîne SHA-256 (falsification et suppression détectées), classification, types d'attaque, erreurs, bilan, rapport, cycle complet (clôture, échec du canari, échec de la transaction de contrôle, playbooks, regroupement des alertes, redémarrage), webhooks (HMAC valide, mauvais secret, rejeu, bearer), playbooks (seuil des IP à bannir, service à relancer, ban puis levée automatique). Depuis la racine : `python tests/run_all.py --only remediation`.
+28 tests : chaîne SHA-256 (falsification et suppression détectées), classification, types d'attaque, erreurs, bilan, rapport, cycle complet (clôture, échec du canari, échec de la transaction de contrôle, playbooks, regroupement des alertes, redémarrage), webhooks (HMAC valide, mauvais secret, rejeu, bearer), playbooks (seuil des IP à bannir, service à relancer, ban puis levée automatique), reprise validée sans attendre la fenêtre de 60 s du taux de succès, canari instable refusé. Depuis la racine : `python tests/run_all.py --only remediation`.

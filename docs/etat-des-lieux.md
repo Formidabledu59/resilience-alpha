@@ -6,7 +6,7 @@
 
 ## En résumé
 
-**Avancement estimé : environ 69 %.** Toute la plateforme est codée, testée et documentée, et la **boucle de reprise autonome est prouvée en conteneurs** (arrêt de `payment-api`, reprise sans intervention humaine, transaction de contrôle réussie).
+**Avancement estimé : environ 70 %.** Toute la plateforme est codée, testée et documentée, et la **boucle de reprise autonome est prouvée en conteneurs** (arrêt de `payment-api`, reprise sans intervention humaine, transaction de contrôle réussie).
 Reste à **calibrer le DoS sur le réseau du groupe** pour que la détection ML déclenche la boucle sur une vraie attaque, puis les livrables.
 
 | Bloc | Poids estimé | Avancement | Contribution |
@@ -16,9 +16,9 @@ Reste à **calibrer le DoS sur le réseau du groupe** pour que la détection ML 
 | Cybersécurité (WAF, Vault, SOC, attaques) | 15 % | 75 % | 11 % |
 | IA (détection, assistant RAG) | 15 % | 75 % | 11 % |
 | Remédiation et boucle de reprise | 15 % | 75 % | 11 % |
-| Gouvernance (EBIOS RM, PCA/PRA, NIS2/DORA) | 10 % | 80 % | 8 % |
+| Gouvernance (EBIOS RM, PCA/PRA, NIS2/DORA) | 10 % | 90 % | 9 % |
 | Livrables (dossier, présentation, clip) | 15 % | 0 % | 0 % |
-| **Total** | | | **environ 69 %** |
+| **Total** | | | **environ 70 %** |
 
 Les poids sont une estimation de l'équipe, pas le barème officiel.
 
@@ -31,7 +31,7 @@ python tests/run_all.py                 # tous les tests (Python 3.11+, Node.js 
 python tests/run_all.py --python-only   # sans Node.js
 ```
 
-Aucun Docker ni service démarré n'est nécessaire : le script installe les dépendances dans `.venv-tests/` (ignoré par Git) et reproduit la CI. **11 suites, 140 tests, toutes vertes** le 22/10 sous Windows. Détail par suite : [README, section 14](../README.md#14-tests).
+Aucun Docker ni service démarré n'est nécessaire : le script installe les dépendances dans `.venv-tests/` (ignoré par Git) et reproduit la CI. **11 suites, 142 tests, toutes vertes** le 22/10 sous Windows. Détail par suite : [README, section 14](../README.md#14-tests).
 
 ---
 
@@ -54,6 +54,7 @@ Aucun Docker ni service démarré n'est nécessaire : le script installe les dé
 | Assistant RAG | Streamlit (`127.0.0.1:8501`), LangChain + Ollama natif, index automatique de `docs/`, lecture seule stricte | #16, #18 |
 | Biométrie back-office (consigne add. 1) | **POC logiciel** : passerelle native (OpenCV LBPH, habilitations, blocage), firmware ESP8266 (compile), flux identifiant -> visage -> mot de passe dans le dashboard | #12, #14 |
 | Gouvernance | EBIOS RM (5 ateliers), PCA/PRA (RTO/RPO, scénarios, risques résiduels), NIS2/DORA, runbooks RB1 à RB7. À relire par l'équipe | #17 |
+| Revue face au sujet (22/10) | Vérification raccourcie (3 relevés du canari au lieu de 60 s, pour tenir le Clip Chrono), gouvernance complétée (impact métier d'un arrêt, RTO mesurés, choix de restauration, disponibilité ≠ compromission, applicabilité DORA, [arbitrages et recommandations](governance/recommandations.md)), affirmations non démontrées corrigées, section Contributions, résultats et limites du ML, check-list du jour J (`DEMARRAGE.md` §12) | `chore/revue-sujet` |
 | Tests et calibrage (22/10) | Lanceur `tests/run_all.py` (tous les PC), tests du garde-fou d'attaque et du scénario e2e, correction du scénario e2e et de la feature `canary_up` du détecteur, revue du calibrage ([`calibrage-attaque-dos.md`](test-results/calibrage-attaque-dos.md)), README mis à jour | `chore/etat-tests-docs` |
 
 Vérifié au runtime : 17 conteneurs `healthy` (stack complète), secrets lus depuis Vault, attaques bloquées au WAF, ban puis levée du ban sans coupure du canary, transaction `COMPLETED` depuis le navigateur et en ligne de commande, logs de tous les services dans Loki, boucle de reprise autonome.
@@ -68,7 +69,8 @@ Vérifié au runtime : 17 conteneurs `healthy` (stack complète), secrets lus de
 |---|---|---|
 | Calibrer le DoS | Sur `RESILIENCE-G16`, relâcher `FRONTEND_API_RATE_LIMIT` et lancer `resilience_scenario.py` (flood authentifié par défaut) jusqu'à une **vraie dégradation** : un flood absorbé par les rate-limits ne fait pas dépasser le seuil ML (mesures dans [`calibrage-attaque-dos.md`](test-results/calibrage-attaque-dos.md)). Noter les réglages retenus | cyber, ia, infra |
 | IP réelle au WAF | Vérifier depuis le PC Attaquant l'IP vue par le WAF (passerelle Docker attendue). Un ban coupe alors tout l'externe 5 min : à annoncer au jury | cyber, infra |
-| Répétition générale | Stack complète, PC Attaquant, scénario de bout en bout, dashboard et Grafana affichés : chronométrer pour le clip de 60 s | tous |
+| Modèle ML sur trafic réel | 30 min de trafic nominal (`collect.py` puis `train.py`), `ml_model_fallback = 0` : le jury attend des observations constituées par l'équipe | ia |
+| Répétition générale | Check-list `DEMARRAGE.md` §12 : 3 succès d'affilée, **re-mesurer la durée de la boucle** (critère de vérification raccourci le 22/10), tenir le Clip Chrono sous 60 s | tous |
 
 ### Priorité 2 : essais restants
 
@@ -78,7 +80,6 @@ Vérifié au runtime : 17 conteneurs `healthy` (stack complète), secrets lus de
 | Biométrie matérielle | Caméra USB et ESP8266 branchés, enrôlement puis accès au back-office | cyber |
 | Passerelle biométrique | Elle écoute sur `0.0.0.0` (README de `biometrics/gateway`), alors que le PC est aussi sur le WiFi du campus. Limiter par une règle du pare-feu Windows au point d'accès, ou lier à `192.168.137.1` après avoir vérifié que le dashboard la joint encore | cyber |
 | Vérification mobile | Frontal et dashboard sur téléphone | dev |
-| Modèle ML entraîné | Optionnel : `ml/training/collect.py` sous trafic nominal puis `train.py`, pour remplacer le modèle de repli synthétique | ia |
 
 ### Priorité 3 : livrables (jeudi)
 
@@ -92,7 +93,7 @@ Vérifié au runtime : 17 conteneurs `healthy` (stack complète), secrets lus de
 ### Ménage et organisation
 
 - **Protéger `main`** sur GitHub (1 approbation obligatoire, CI requise) : les PR sont pour l'instant mergées sans review.
-- Remplir la section **Contributions** du README à partir de l'historique Git avant le rendu.
+- **Contributions** (README §18) : relevé Git fait ; chaque membre complète sa colonne « autres contributions » (exigé par le sujet : contribution de chacun visible dans le dossier).
 - `ml/notebooks/` n'existe pas : le README n'y renvoie plus. À créer seulement si l'équipe veut montrer l'exploration des données.
 
 ---

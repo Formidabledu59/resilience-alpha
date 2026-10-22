@@ -17,6 +17,25 @@
 Une plateforme de paiement relèverait des deux. Le POC se concentre sur les aspects
 **techniques et opérationnels** (détection, réponse, continuité, traçabilité).
 
+### Applicabilité à l'entreprise fictive
+
+- **DORA** s'applique directement : un établissement de paiement est une **entité financière**
+  au sens du règlement (art. 2). C'est le cadre principal.
+- **NIS2** vise le secteur bancaire et les infrastructures des marchés financiers. Pour les
+  entités financières, DORA est une **loi spéciale** (*lex specialis*) : ses exigences de gestion
+  du risque TIC et de notification priment sur celles de NIS2. NIS2 reste utile pour la
+  gouvernance générale et la chaîne d'approvisionnement.
+
+### Classification d'un incident majeur (DORA) et données du journal
+
+| Critère DORA de classification | Où le POC le mesure |
+|---|---|
+| Durée et indisponibilité du service | `opened_at` / `closed_at` de l'incident, `remediation_duration_seconds` |
+| Clients et transactions touchés | Taux de succès du canari, débit de transactions (preuves de l'incident) |
+| Services critiques touchés | Catégorie et cible de l'alerte (`job` de `TargetDown`, catégorie d'incident) |
+| Pertes de données | Transactions atomiques ; RPO ~0 (voir PCA/PRA) |
+| Étendue géographique, impact économique, réputation | Non mesurable dans le POC (hypothèses d'impact : PCA/PRA §2) |
+
 ---
 
 ## NIS2 - correspondance
@@ -43,7 +62,7 @@ Une plateforme de paiement relèverait des deux. Le POC se concentre sur les asp
 | Détection des anomalies | Détecteur ML (Isolation Forest) sur métriques temps réel | Corrélation multi-sources à grande échelle |
 | Réponse et rétablissement | Remédiation autonome + preuve par transaction métier | Plans de communication, continuité des opérations critiques |
 | Gestion des incidents et notification | Classification des incidents, journal chaîné, rapports Markdown | Déclaration aux autorités (modèles DORA), délais réglementaires |
-| Tests de résilience opérationnelle | Chaos (arrêt de service), scénario d'attaque, scénario e2e | Tests TLPT (red team avancée) encadrés par un prestataire agréé |
+| Tests de résilience opérationnelle | Chaos (arrêt de service, fait le 21/10), injections bloquées (fait), DoS et scénario e2e (prévus) | Tests TLPT (red team avancée) encadrés par un prestataire agréé |
 | Risque lié aux tiers TIC | Ollama local (pas de dépendance cloud), images maîtrisées | Registre des contrats, stratégie de sortie fournisseur |
 | Partage d'informations sur les cyber-menaces | Règles SOC documentées, types d'attaque qualifiés | Participation à une communauté de partage (ISAC) |
 
@@ -52,7 +71,8 @@ Une plateforme de paiement relèverait des deux. Le POC se concentre sur les asp
 ## Ce que la démonstration met particulièrement en avant
 
 - **Détection et réponse automatisées** (NIS2 gestion des incidents, DORA détection/réponse) :
-  la boucle agit en moins de 3 minutes et **prouve** la reprise.
+  sur une panne de service, la boucle a agi en ~67 s et **prouvé** la reprise par une
+  transaction (21/10). Le chemin attaque DoS → détection ML reste à démontrer.
 - **Traçabilité vérifiable** : le journal d'incidents chaîné SHA-256 fournit une preuve
   d'intégrité, utile pour une notification d'incident crédible.
 - **Résilience testée** : la reprise a été rejouée en conteneurs réels (chaos), pas seulement
@@ -63,4 +83,5 @@ Une plateforme de paiement relèverait des deux. Le POC se concentre sur les asp
 Les volets organisationnels et réglementaires (gouvernance d'entreprise, notification réelle aux
 autorités, tests TLPT agréés, gestion contractuelle des tiers, haute disponibilité multi-site)
 sortent du périmètre d'un démonstrateur de quatre jours sur un seul hôte. Ils sont identifiés ici
-pour montrer la trajectoire vers une conformité réelle, détaillée dans le dossier d'ingénierie.
+pour montrer la trajectoire vers une conformité réelle, détaillée dans
+[`../recommandations.md`](../recommandations.md).

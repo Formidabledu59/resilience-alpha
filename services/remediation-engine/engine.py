@@ -9,6 +9,7 @@ Un incident n'est CLOSED qu'après une transaction de contrôle réussie (POST /
 
 import asyncio
 import copy
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
 
@@ -19,6 +20,10 @@ from journal import Journal, now_iso
 
 LOOKBACK_SECONDS = 300      # les preuves couvrent aussi les 5 minutes qui précèdent l'alerte
 RECOVERY_RATIO = 0.95       # taux de succès du canari considéré comme nominal
+# Ou : canary_up = 1 sur N relevés consécutifs (~N x 5 s). Le taux de succès est calculé sur
+# 60 s : après une panne, il met une minute à remonter, alors que le service est déjà rétabli.
+# La reprise reste prouvée par la transaction de contrôle qui suit, pas par ce seul critère.
+STABLE_CHECKS = int(os.environ.get("VERIFY_STABLE_CHECKS", "3"))
 
 # Liste blanche : seuls ces playbooks peuvent être exécutés, selon la catégorie d'incident.
 # Les attaques applicatives et la reconnaissance sont déjà bloquées par le WAF : pas d'action.
@@ -185,14 +190,17 @@ class Engine:
     async def _verify(self, incident_id: str) -> bool:
         incident = self._current(incident_id)
         incident["status"] = "VERIFYING"
-        self._step(incident, "Attente du retour nominal du canari", f"canary_up = 1 et taux de succès >= {fr_percent(RECOVERY_RATIO)}", "info")
+        self._step(incident, "Attente du retour nominal du canari",
+                   f"canary_up = 1 sur {STABLE_CHECKS} relevés consécutifs, ou taux de succès >= {fr_percent(RECOVERY_RATIO)}", "info")
         self._save(incident, "incident.verifying")
 
         deadline = asyncio.get_running_loop().time() + self.verify_timeout
         up = ratio = None
+        stable = 0
         while True:
             up, ratio = await self.observer.canary_state()
-            if up == 1 and ratio is not None and ratio >= RECOVERY_RATIO:
+            stable = stable + 1 if up == 1 else 0
+            if up == 1 and (stable >= STABLE_CHECKS or (ratio is not None and ratio >= RECOVERY_RATIO)):
                 break
             if asyncio.get_running_loop().time() >= deadline:
                 incident = self._current(incident_id)
@@ -202,7 +210,7 @@ class Engine:
             await asyncio.sleep(self.poll_interval)
 
         incident = self._current(incident_id)
-        self._step(incident, "Vérification canary_up", f"1, taux de succès {fr_percent(ratio)}", "verification")
+        self._step(incident, "Vérification canary_up", f"1 sur {stable} relevé(s), taux de succès {fr_percent(ratio)}", "verification")
         self._save(incident, "verification.canary")
         try:
             probe = await self.probe()

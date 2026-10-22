@@ -45,6 +45,28 @@ Le brut de l'Isolation Forest est ramené dans [0, 1] par une sigmoïde calée s
 
 Sans modèle dans `ml/models/`, **ml-detector entraîne un modèle de repli synthétique au démarrage** (reproductible) : la détection fonctionne toujours. Le métrique `ml_model_fallback` vaut alors 1. Pour une vraie démo, collecter puis entraîner, et redémarrer `ml-detector`.
 
+## Résultats et limites
+
+Scores du modèle de repli synthétique sur des situations types (détail et contexte : [`calibrage-attaque-dos.md`](../docs/test-results/calibrage-attaque-dos.md)) :
+
+| Situation | Score | Alerte (seuil 0,7) |
+|---|---|---|
+| Trafic nominal | 0,03 | non |
+| Flood absorbé par les rate-limits (seul le débit de requêtes monte) | 0,11 | non |
+| Flood authentifié absorbé (débit de requêtes et de transactions) | 0,29 | non |
+| Canari en échec seul | 0,63 | non |
+| Service dégradé (succès 50 %, latence p95 2 s, erreurs 5xx) | 0,88 | **oui** |
+| Arrêt de payment-api (répétition du 21/10, en conteneurs) | 0,05 → 0,70 en 54 s | `TargetDown` a déclenché avant le ML |
+
+Ce que le modèle sait faire : repérer une **combinaison inhabituelle** de plusieurs indicateurs (succès du canari, latence, erreurs, débit). Ce n'est pas une règle codée en dur : le seuil porte sur un score appris à partir du trafic nominal.
+
+Limites constatées :
+- **Modèle de repli entraîné sur des données simulées** : à remplacer par un modèle entraîné sur 30 minutes de trafic nominal réel (étapes ci-dessus) avant la démonstration.
+- **Une seule dégradation n'alerte pas toujours** : l'Isolation Forest isole mieux un point qui s'écarte sur plusieurs axes. Un canari en échec seul reste sous le seuil ; une panne franche est couverte par l'alerte Prometheus `TargetDown`.
+- **Une attaque contenue ne déclenche rien** : si le WAF et le frontal absorbent le flood, le service n'est pas dégradé et aucun incident n'est ouvert. C'est voulu, mais le DoS de la démonstration doit être calibré pour dégrader réellement le service.
+- **Délai de détection** : 3 relevés consécutifs × 5 s, plus le temps que les moyennes glissantes sur 1 minute (`rate[1m]`) réagissent. Réglable par `ML_ALERT_CONSECUTIVE` (2 = plus rapide, plus de faux positifs).
+- **En industriel** : historique de plusieurs semaines (cycles jour / nuit, pics de fin de mois), réentraînement régulier, métriques supplémentaires (CPU, blocages WAF via un exporter), suivi des faux positifs avec les opérateurs.
+
 ## Métriques exposées
 
 | Métrique | Signification |
@@ -77,4 +99,4 @@ Sans modèle dans `ml/models/`, **ml-detector entraîne un modèle de repli synt
 cd ml/detector && pip install -r requirements.txt pytest && python -m pytest
 ```
 
-9 tests : score bas en nominal et haut en DoS, moins de 5 % de faux positifs sur le nominal, score borné, reproductibilité, signature HMAC conforme au moteur, alerte après 3 relevés, pas d'alerte en nominal ni sur une séquence brève, robustesse si Prometheus est muet.
+12 tests : score bas en nominal et haut en DoS, `canary_up` pris en compte, dégradation réaliste au-dessus du seuil et flood absorbé en dessous, moins de 5 % de faux positifs sur le nominal, score borné, reproductibilité, signature HMAC conforme au moteur, alerte après 3 relevés, pas d'alerte en nominal ni sur une séquence brève, robustesse si Prometheus est muet.
