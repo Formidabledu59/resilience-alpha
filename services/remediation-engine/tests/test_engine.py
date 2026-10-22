@@ -92,3 +92,33 @@ def test_incident_interrompu_par_un_redemarrage_est_trace(tmp_path, observer):
     incident = engine.journal.get("inc-2026-10-20-001")
     assert incident["status"] == "FAILED"
     assert incident["steps"][-1]["action"] == "Moteur redémarré pendant l'incident"
+
+
+class SequenceObserver(FakeObserver):
+    """Canari qui évolue relevé après relevé (le dernier état se répète)."""
+
+    def __init__(self, states):
+        super().__init__()
+        self.states = list(states)
+
+    async def canary_state(self):
+        return self.states.pop(0) if len(self.states) > 1 else self.states[0]
+
+
+def test_reprise_validee_sans_attendre_la_fenetre_de_60_s(tmp_path):
+    # Après une panne, le taux sur 60 s reste bas alors que le canari réussit à nouveau :
+    # 3 relevés consécutifs à canary_up = 1 suffisent avant la transaction de contrôle.
+    observer = SequenceObserver([(0, 0.2), (1, 0.4), (1, 0.5), (1, 0.6)])
+    ok = {"ok": True, "status": "COMPLETED", "transaction_id": 11, "latency_seconds": 0.05}
+    _, incident = asyncio.run(run_incident(tmp_path, observer, ok))
+    assert incident["status"] == "CLOSED"
+    assert any(s["action"] == "Vérification canary_up" and s["result"].startswith("1 sur 3")
+               for s in incident["steps"])
+
+
+def test_canari_instable_ne_valide_pas_la_reprise(tmp_path):
+    # canary_up qui oscille ne compte jamais 3 succès d'affilée : échec, intervention humaine.
+    states = [(1, 0.5), (0, 0.5)] * 50
+    observer = SequenceObserver(states)
+    _, incident = asyncio.run(run_incident(tmp_path, observer, {"ok": True, "status": "COMPLETED"}))
+    assert incident["status"] == "FAILED"
