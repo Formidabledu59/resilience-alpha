@@ -5,7 +5,7 @@ Détection non supervisée par **Isolation Forest** (scikit-learn). Le service `
 ```
 Prometheus  ──(6 features, 5 s)──►  ml-detector  ──score──►  /metrics (ml_anomaly_score)
                                           │
-                                          └─ score > seuil sur 3 relevés ─► webhook HMAC ─► remediation-engine
+                                          └─ score ≥ seuil sur 3 relevés ─► webhook HMAC ─► remediation-engine
 ```
 
 ## Structure

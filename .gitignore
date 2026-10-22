@@ -38,3 +38,6 @@ biometrics/**/.venv/
 biometrics/esp8266/.pio/
 biometrics/esp8266/include/secrets.h
 ml/data/*.csv
+
+# Environnement du lanceur de tests (tests/run_all.py)
+.venv-tests/

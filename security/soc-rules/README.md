@@ -3,7 +3,7 @@
 Règles d'alerte évaluées par le **ruler de Loki** sur les journaux, et envoyées à **Alertmanager**.
 
 ```
-Logs (WAF, auth-service) -> Loki -> ruler (ces règles) -> Alertmanager -> (plus tard) remediation-engine
+Logs (WAF, auth-service) -> Loki -> ruler (ces règles) -> Alertmanager -> remediation-engine (`/webhook/alertmanager`, bearer token)
 ```
 
 | Fichier | Contenu |
@@ -12,7 +12,7 @@ Logs (WAF, auth-service) -> Loki -> ruler (ces règles) -> Alertmanager -> (plus
 
 ## Comment c'est branché
 
-- Loki monte ce dossier sur `/etc/loki/rules/fake/` (tenant unique, `auth_enabled: false`).
+- Loki monte `alerts.yml` sur `/etc/loki/rules/fake/alerts.yml` (tenant unique, `auth_enabled: false`).
 - Le ruler (configuré dans `infra/loki/loki-config.yml`) évalue les règles toutes les 15 s et envoie les alertes à `http://alertmanager:9093`.
 - Vérifier les règles chargées : `GET http://loki:3100/loki/api/v1/rules` ; leur état : `GET http://loki:3100/prometheus/api/v1/rules`.
 

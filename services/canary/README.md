@@ -8,7 +8,7 @@ Sonde métier : prouve que la plateforme sait encore **traiter un paiement**, pa
 - Métriques : `canary_up`, `canary_success_ratio` (60 s), `canary_latency_seconds`, `canary_transactions_total{result}`
 - `GET /health` (processus vivant uniquement), port `8000`
 
-Variables : `AUTH_URL`, `PAYMENT_URL` (directement les services pour le POC, le WAF plus tard), `AUTH_CANARY_PASSWORD`, `CANARY_INTERVAL_SECONDS`.
+Variables : `AUTH_URL`, `PAYMENT_URL` (dans Compose : `http://waf:8080/api`, le canary passe par le WAF comme un vrai client ; les valeurs par défaut du code visent directement les services, hors Compose), réseaux `app-net` et `obs-net`, `AUTH_CANARY_PASSWORD`, `CANARY_INTERVAL_SECONDS`.
 
 ## Tests
 

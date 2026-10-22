@@ -21,16 +21,23 @@ Pourquoi un fichier plutôt qu'une commande en ligne : Windows PowerShell 5.1 ab
 
 ## resilience_scenario.py
 
-Scénario complet, à lancer **depuis le PC Attaquant** (ou le PC Hôte en développement), avec la stack complète démarrée (`--profile app --profile security --profile ia --profile remediation`). Il n'utilise que les points publiés sur le PC Hôte : WAF, Prometheus (`127.0.0.1:9090`) et dashboard (`127.0.0.1:5173`).
+Scénario complet, à lancer **sur le PC Hôte** : Prometheus (`127.0.0.1:9090`) et le dashboard (`127.0.0.1:5173`) ne sont publiés que sur `127.0.0.1`, injoignables depuis le PC Attaquant. Stack complète démarrée (`--profile app --profile security --profile ia --profile remediation`) et **point d'accès `RESILIENCE-G16` actif** : l'attaque vise le WAF sur `192.168.137.1`, le garde-fou de `flood.py` refuse toute autre cible (dont `127.0.0.1`).
 
 ```bash
 pip install -r attack/requirements.txt
 export ATTACK_PASSWORD='<mot de passe demo, voir .env du PC Hôte>'
-python tests/e2e/resilience_scenario.py --waf http://192.168.137.1 --auth
+python tests/e2e/resilience_scenario.py
 ```
 
 Déroulé : (1) transaction métier nominale, (2) lancement de `attack/dos/flood.py` (cible contrôlée par le garde-fou), (3) attente qu'un incident s'ouvre puis se clôture (détection ML, remédiation, transaction de contrôle), (4) transaction métier finale. Code de sortie 0 si la boucle est prouvée.
 
-Options : `--waf`, `--prometheus`, `--dashboard`, `--attack-seconds` (défaut 90), `--concurrency` (défaut 200), `--auth` (flood authentifié, recommandé), `--timeout` (défaut 300 s).
+Options : `--waf` (défaut `http://192.168.137.1`), `--prometheus`, `--dashboard`, `--attack-seconds` (défaut 90), `--concurrency` (défaut 200), `--auth` / `--no-auth` (flood authentifié par défaut, il charge vraiment la base), `--timeout` (défaut 300 s), `--poll-seconds` (défaut 5), `--ban-wait` (défaut 360 s).
+
+Garde-fous du scénario :
+- si `flood.py` s'arrête aussitôt (cible refusée, `ATTACK_PASSWORD` absent), le scénario échoue tout de suite au lieu d'attendre 5 minutes ;
+- seuls les incidents ouverts **après** le lancement de l'attaque comptent : un incident clos lors d'un essai précédent ne donne pas un faux succès ;
+- la remédiation peut bannir l'IP du client (derrière Docker Desktop, tout l'externe partage la même IP) : la transaction finale attend la levée du ban (`BAN_MINUTES`, 5 min) au lieu d'échouer sur un 403.
+
+Tests unitaires de la logique du scénario (sans stack, réseau simulé) : `python tests/run_all.py --only e2e`.
 
 > Si aucun incident ne se déclenche, l'attaque n'a pas assez dégradé le service : renforcer la charge et relâcher les rate-limits (voir `docs/test-results/calibrage-attaque-dos.md` et `attack/dos/README.md`).

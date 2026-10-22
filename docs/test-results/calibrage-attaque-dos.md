@@ -20,7 +20,7 @@ Dans les deux cas, latence de l'attaquant très élevée (p95 7 à 12 s : file d
 
 1. **Deux rate-limits en série**, chacun **par IP source** :
    - WAF : `WAF_RATE_LIMIT` (défaut 50 r/s) ;
-   - frontal : zone `/api` à **10 r/s** par IP (codée dans `services/frontend/nginx.conf`), zone `/api/auth/token` à 10 r/min.
+   - frontal : zone `/api` à **10 r/s** par IP (`FRONTEND_API_RATE_LIMIT`, rafale `FRONTEND_API_BURST` = 20, réglables dans `.env`), zone `/api/auth/token` à 10 r/min.
 2. **Docker Desktop masque l'IP réelle** : tout le trafic externe arrive avec l'IP de la passerelle Docker, donc **partage un seul bucket** de rate-limit. L'attaquant se limite lui-même.
 3. **Le canary est interne** (`app-net`, sa propre IP) : son bucket est distinct, il n'est jamais en concurrence avec le flood. D'où `canary_up` qui reste à 1.
 
@@ -32,8 +32,8 @@ Le calibrage réel se fait sur `RESILIENCE-G16`. En WiFi, la latence (5 à 50 ms
 
 Si, sur le réseau, `canary_up` ne tombe toujours pas, leviers par ordre de préférence :
 
-1. **Rendre la limite `/api` du frontal réglable** (variable d'env) et la relâcher pour la démo, pour que le flood atteigne payment-api.
-2. **Flood authentifié** : obtenir un jeton valide (login `demo`) et marteler `POST /api/transactions` avec, pour toucher la base (transaction SQL réelle) plutôt que de s'arrêter au 401.
+1. **Relâcher la limite `/api` du frontal** (fait : `FRONTEND_API_RATE_LIMIT` et `FRONTEND_API_BURST` dans `.env`), pour que le flood atteigne payment-api.
+2. **Flood authentifié** (fait : `flood.py --auth demo`, par défaut dans `resilience_scenario.py`) : un login, puis de vraies transactions qui touchent la base plutôt que de s'arrêter au 401.
 3. **Monter la concurrence** (`--concurrency 300`+) et la durée, pour épuiser le pool de workers.
 4. **Réduire le nombre de workers** d'auth-service / payment-api (uvicorn) pour un pool plus facile à saturer en démo.
 
@@ -46,4 +46,45 @@ Si, sur le réseau, `canary_up` ne tombe toujours pas, leviers par ordre de pré
 
 ## Prochaine étape
 
-Points 1 et 2 de la liste de Papa à refaire **sur le réseau du groupe** : vérifier l'IP vue par le WAF depuis le PC Attaquant, puis calibrer jusqu'à une chute de `canary_up` reproductible. Noter ici la commande et les réglages retenus.
+Leviers 1 et 2 de la liste ci-dessus à essayer **sur le réseau du groupe** : vérifier l'IP vue par le WAF depuis le PC Attaquant, puis calibrer jusqu'à une chute de `canary_up` reproductible. Noter ici la commande et les réglages retenus.
+
+## Revue de la chaîne de détection (22 octobre 2026)
+
+Revue du code, sans Docker. Les scores ci-dessous sont calculés avec le modèle de repli synthétique du détecteur, qui est celui utilisé tant qu'aucun modèle n'est entraîné dans `ml/models/`.
+
+| Situation simulée | Score ML | Alerte (seuil 0,7) |
+|---|---|---|
+| Nominal | 0,03 | non |
+| Flood **absorbé** par les rate-limits (seul `request_rate` monte, environ 11 r/s) | 0,11 | **non** |
+| Flood authentifié absorbé (`request_rate` 11, débit de transactions 5/s) | 0,29 | **non** |
+| Canari en échec seul (`canary_up` 0, taux de succès 0) | 0,63 | non |
+| **Service dégradé** (taux de succès 50 %, latence p95 2 s, erreurs 5xx) | **0,88** | **oui** |
+
+**Conclusion** : le détecteur ne lève une alerte que si le service est **réellement dégradé** (plusieurs indicateurs bougent ensemble). Un flood absorbé par le WAF et le frontal ne déclenche rien. Ce comportement est voulu (pas de faux positif sur une attaque déjà contenue) : le calibrage doit viser une vraie dégradation. Ces trois cas sont figés dans `ml/detector/tests/test_anomaly.py`.
+
+**Corrigé le 22/10** :
+- `canary_up` était constant dans les données d'entraînement synthétiques, donc ignoré par l'Isolation Forest. Il a maintenant un léger écart-type (`ml/detector/anomaly.py`).
+- `resilience_scenario.py` visait par défaut `127.0.0.1`, cible refusée par le garde-fou : le scénario attendait 5 minutes pour rien. Il vise maintenant `192.168.137.1`, s'arrête aussitôt si l'attaque ne démarre pas, ignore les incidents antérieurs et attend la levée du ban avant la transaction finale.
+
+**Paramètres côté remédiation** (valeurs par défaut du code, absentes de `.env`) :
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `ML_ANOMALY_THRESHOLD` | 0,7 | Seuil d'alerte du détecteur |
+| `BAN_MIN_REQUESTS` | 100 | Refus WAF (403/429) à partir desquels une IP est bannie |
+| `BAN_MINUTES` | 5 | Durée du ban avant levée automatique |
+| `VERIFY_TIMEOUT_SECONDS` | 180 | Délai maximal de retour au nominal avant la transaction de contrôle |
+
+**Point d'attention** : derrière Docker Desktop, le PC Hôte et le PC Attaquant arrivent au WAF avec la même IP. Si le flood produit au moins 100 refus, la remédiation bannit cette IP : tout l'externe est coupé pendant 5 minutes (le canary, interne, continue). C'est attendu pendant la démonstration : il faut l'annoncer au jury.
+
+**Réglages à essayer sur `RESILIENCE-G16`** (PC Hôte, point d'accès actif, stack complète) :
+
+```bash
+# .env du PC Hôte : relâcher le frontal pour que le flood atteigne payment-api, puis redémarrer le frontal
+FRONTEND_API_RATE_LIMIT=200r/s
+FRONTEND_API_BURST=400
+
+ATTACK_PASSWORD='<mot de passe demo>' python tests/e2e/resilience_scenario.py --concurrency 300 --attack-seconds 120
+```
+
+Noter ici les réglages retenus et le résultat (score ML maximal, `canary_up`, identifiant et durée de l'incident).

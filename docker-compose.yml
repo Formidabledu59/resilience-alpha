@@ -3,7 +3,7 @@
 #
 # "docker compose up -d" sans profile démarre uniquement la stack d'observabilité :
 #   prometheus, alertmanager, loki, alloy, grafana, socket-proxy-ro.
-# Les autres services sont rangés dans des profiles tant que leur code n'existe pas :
+# Les autres services sont rangés dans des profiles, à démarrer à la demande :
 #   app | security | ia | remediation   (ex. docker compose --profile app up -d)
 #
 # Secrets : uniquement des ${VAR} lues depuis .env (ignoré par Git), voir .env.example.
@@ -228,7 +228,7 @@ services:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2375/_ping"]
 
   # =========================================================================
-  # Profile "app" : services métier (code à venir)
+  # Profile "app" : services métier
   # =========================================================================
   frontend:
     <<: *hardening
@@ -500,6 +500,9 @@ services:
       # Ollama tourne en natif, hors Docker (PC Hôte ou PC délestage IA)
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:?OLLAMA_BASE_URL manquant dans .env}
       OLLAMA_MODEL: ${OLLAMA_MODEL:?OLLAMA_MODEL manquant dans .env}
+      OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
+      RAG_TOP_K: ${RAG_TOP_K:-4}
+      RAG_SCORE_FLOOR: ${RAG_SCORE_FLOOR:-0.3}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

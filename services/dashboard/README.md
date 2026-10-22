@@ -14,6 +14,7 @@ Publié sur **`http://127.0.0.1:5173`** uniquement (PC Hôte). Rafraîchissement
 | Dernier incident | Étapes de remédiation en direct | `remediation-engine` (`GET /incidents`) |
 | Journal des incidents | Pour chaque incident : ce qui s'est passé, impact, erreurs observées, défense, chronologie, issue, rapport Markdown téléchargeable ; intégrité de la chaîne SHA-256 du journal | `remediation-engine` (`GET /incidents`, `/journal/verify`, `/incidents/{id}/report`) |
 | Action principale | « Lancer une transaction de contrôle » | `canary` (`POST /probe`) |
+| Back-office | Accès protégé par identifiant, **reconnaissance faciale** puis mot de passe ; onglet « Habilitations » (enrôlement des visages) | passerelle biométrique native (`biometrics/gateway`) |
 
 Règles de la phase (`src/status.js`, testées) :
 
@@ -25,7 +26,11 @@ Règles de la phase (`src/status.js`, testées) :
 | Après | incident clôturé depuis moins de 10 minutes et service nominal |
 | Avant | fonctionnement nominal |
 
-Les zones « Score d'anomalie » et « Incidents » affichent un message d'attente tant que `ml-detector` et `remediation-engine` ne sont pas déployés.
+Les zones « Score d'anomalie » et « Incidents » affichent un message d'attente tant que les profiles `ia` et `remediation` ne sont pas démarrés.
+
+## Back-office biométrique (consigne additionnelle 1)
+
+`src/components/BackOfficeGate.jsx` enchaîne identifiant, visage (caméra du PC Hôte) et mot de passe ; `src/components/Habilitations.jsx` gère l'enrôlement. La logique (`src/backoffice.js`, `src/biometrics.js`) est testée. La passerelle tourne en natif sur le PC Hôte (port 8700, accès caméra) : voir [`biometrics/README.md`](../../biometrics/README.md).
 
 ## Relais nginx (lecture seule, sauf la transaction de contrôle)
 
@@ -37,6 +42,7 @@ Les zones « Score d'anomalie » et « Incidents » affichent un message d'atten
 | `/api/remediation/incidents` | `remediation-engine:8000/incidents` | GET |
 | `/api/remediation/journal/verify` | `remediation-engine:8000/journal/verify` | GET |
 | `/api/remediation/incidents/inc-AAAA-MM-JJ-NNN/report` | `remediation-engine:8000/incidents/<id>/report` | GET, identifiant contrôlé par expression régulière |
+| `/api/biometrics/` | `host.docker.internal:8700/` (passerelle biométrique native) | GET, POST |
 
 Tout autre chemin `/api/` renvoie 404. Le dashboard n'a aucun accès à Docker, Vault ou aux secrets (vérifié par un test). Le DNS Docker est résolu à chaque requête : nginx démarre même si un service n'existe pas encore.
 
@@ -53,4 +59,4 @@ Tout autre chemin `/api/` renvoie 404. Le dashboard n'a aucun accès à Docker, 
 docker run --rm -v "${PWD}/services/dashboard:/app" -v resilience-db-nm:/app/node_modules -w /app node:22.23.3-alpine3.24 sh -c "npm install -g npm@11.21.0 && npm ci && npm test && npm run build"
 ```
 
-Tests : phases de la démonstration, lecture des réponses Prometheus, formatage français, correspondance entre les URL appelées et les relais nginx, typographie.
+19 tests : phases de la démonstration, lecture des réponses Prometheus, formatage français, correspondance entre les URL appelées et les relais nginx, typographie, parcours du back-office (identifiant, visage, mot de passe). Sans Docker, depuis la racine : `python tests/run_all.py --only dashboard` (Node.js 22 requis).

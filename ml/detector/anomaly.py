@@ -20,7 +20,9 @@ import numpy as np
 # Toutes sont disponibles dans Prometheus (le WAF et le CPU ne le sont pas : voir ml/README.md).
 FEATURES = [
     ("canary_success_ratio", "canary_success_ratio", 1.0, 0.02),
-    ("canary_up", "canary_up", 1.0, 0.0),
+    # Écart-type non nul : une feature constante à l'entraînement est ignorée par l'Isolation
+    # Forest (aucune coupe possible), canary_up = 0 ne changerait alors rien au score.
+    ("canary_up", "canary_up", 1.0, 0.01),
     ("latency_p95", "histogram_quantile(0.95, sum by (le) (rate(canary_latency_seconds_bucket[1m])))", 0.05, 0.02),
     ("throughput", "sum(rate(payment_transactions_total[1m]))", 0.25, 0.08),
     ("errors_5xx", 'sum(rate(http_requests_total{status="5xx"}[1m])) or vector(0)', 0.0, 0.01),
@@ -58,8 +60,8 @@ def synthetic_nominal(n: int = 4000, seed: int = 42) -> np.ndarray:
         values = rng.normal(mean, std, n) if std > 0 else np.full(n, mean)
         columns.append(values)
     data = np.column_stack(columns)
-    # Bornes physiques : ratio dans [0,1], le reste positif
-    data[:, 0] = np.clip(data[:, 0], 0.0, 1.0)
+    # Bornes physiques : ratio et canary_up dans [0,1], le reste positif
+    data[:, :2] = np.clip(data[:, :2], 0.0, 1.0)
     data[:, 2:] = np.clip(data[:, 2:], 0.0, None)
     return data
 

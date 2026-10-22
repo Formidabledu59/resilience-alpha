@@ -46,7 +46,7 @@ Exclusion en place : **920350** « en-tête Host en adresse IP ». Le démonstra
 
 Vérifié à la main : ban écrit puis `HUP`, le trafic externe reçoit 403, le canary continue de passer (201) et `canary_up` reste à 1. Ban levé, le trafic repasse. Le WAF ne redémarre pas.
 
-Point à régler dans remediation-engine : le volume est créé par Docker avec le propriétaire `root`. L'utilisateur 10001 de remediation-engine devra pouvoir y écrire (par exemple un conteneur d'initialisation qui fait `chown 10001` sur le volume).
+Réglé : l'image de remediation-engine crée `/banlist` avec le propriétaire 10001 (`Dockerfile`), Docker reprend ce propriétaire à la création du volume.
 
 ## Limite importante : l'IP réelle du client
 

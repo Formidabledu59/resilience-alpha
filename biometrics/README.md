@@ -45,5 +45,5 @@ La caméra USB est un périphérique du PC Hôte ; Docker Desktop (Windows) n'y 
 - **Reconnaissance** : OpenCV **LBPH**, la plus légère (« IA légère » de la consigne). Précision correcte en conditions maîtrisées (démo), moins robuste que des modèles lourds.
 - **ESP** : il **interroge** la passerelle (poll) toutes les ~300 ms ; les motifs temporisés (30 s, 10 clignotements) sont joués en autonomie par l'ESP.
 - **Tension avec CLAUDE.md** (« seul le WAF publie un port réseau ») : la passerelle est un service **natif de l'hôte**, pas un conteneur Docker. Elle écoute sur l'interface du point d'accès pour l'ESP. Exception assumée et documentée, propre à cette consigne.
-- **Session back-office** : after acceptation, un drapeau de session est gardé côté navigateur (POC). Une vraie session serveur serait nécessaire en production.
+- **Session back-office** : après acceptation, un drapeau de session est gardé côté navigateur (POC). Une vraie session serveur serait nécessaire en production.
 - **Hors stack imposée** : OpenCV et le firmware ESP ne sont pas dans la stack initiale ; la consigne additionnelle les impose explicitement.

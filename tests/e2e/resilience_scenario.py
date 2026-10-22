@@ -13,9 +13,11 @@ Prouve la boucle de reprise autonome. N'utilise que les points publiés sur le P
      se clôture après une transaction de contrôle réussie.
   4. Transaction métier finale (doit réussir) : la plateforme est à nouveau utilisable.
 
-Lancement (PC Hôte, stack complète démarrée, mot de passe demo dans ATTACK_PASSWORD) :
+Lancement sur le PC Hôte (Prometheus et dashboard ne sont publiés que sur 127.0.0.1), stack
+complète démarrée, point d'accès RESILIENCE-G16 actif (le garde-fou de flood.py refuse toute
+cible hors 192.168.137.0/24, donc 127.0.0.1 aussi), mot de passe demo dans ATTACK_PASSWORD :
   export ATTACK_PASSWORD='<mot de passe demo>'
-  python tests/e2e/resilience_scenario.py --waf http://127.0.0.1
+  python tests/e2e/resilience_scenario.py --waf http://192.168.137.1
 
 Code de sortie 0 si la boucle complète est prouvée, 1 sinon (avec le motif de l'échec).
 """
@@ -32,6 +34,9 @@ from pathlib import Path
 import httpx
 
 REPO = Path(__file__).resolve().parents[2]
+# Le ban posé par la remédiation (BAN_MINUTES, 5 min par défaut) touche aussi le client du
+# scénario : derrière Docker Desktop, tout le trafic externe arrive au WAF avec la même IP.
+DEFAULT_BAN_WAIT = 6 * 60
 
 
 def step(number: int, text: str) -> None:
@@ -70,27 +75,61 @@ def incidents(dashboard: str) -> list[dict]:
         return []
 
 
+def is_ban(exc: httpx.HTTPError) -> bool:
+    return isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 403
+
+
+def final_transaction(waf: str, password: str, ban_wait: float, poll: float = 15) -> dict:
+    """Transaction métier après reprise. Attend la levée du ban (403) si la remédiation en a posé un."""
+    deadline = time.monotonic() + ban_wait
+    while True:
+        try:
+            return business_transaction(waf, login(waf, password))
+        except httpx.HTTPStatusError as exc:
+            if not is_ban(exc) or time.monotonic() >= deadline:
+                raise
+            print(f"    403 : IP bannie par la remédiation, attente de la levée du ban ({poll:.0f} s)...", flush=True)
+            time.sleep(poll)
+
+
 def control_transaction(dashboard: str) -> dict:
     response = httpx.post(f"{dashboard}/api/canary/probe", timeout=20)
     response.raise_for_status()
     return response.json()
 
 
-def launch_attack(args: argparse.Namespace) -> subprocess.Popen:
+def attack_command(args: argparse.Namespace) -> list[str]:
     cmd = [sys.executable, str(REPO / "attack" / "dos" / "flood.py"),
            "--target", args.waf, "--duration", str(args.attack_seconds),
            "--concurrency", str(args.concurrency)]
     if args.auth:
         cmd += ["--auth", "demo"]
+    return cmd
+
+
+def launch_attack(args: argparse.Namespace, startup_seconds: float = 3) -> subprocess.Popen | None:
+    """Lance flood.py. Renvoie None s'il s'arrête aussitôt (cible refusée, mot de passe absent...)."""
+    cmd = attack_command(args)
     print(f"    commande : {' '.join(cmd)}")
-    return subprocess.Popen(cmd)  # noqa: S603 - cible protégée par le garde-fou de flood.py
+    attack = subprocess.Popen(cmd)  # noqa: S603 - cible protégée par le garde-fou de flood.py
+    try:
+        code = attack.wait(timeout=startup_seconds)
+    except subprocess.TimeoutExpired:
+        return attack  # l'attaque tourne
+    print(f"    l'attaque s'est arrêtée immédiatement (code {code})", file=sys.stderr)
+    return None
 
 
-def wait_for_recovery(args: argparse.Namespace, deadline: float) -> tuple[bool, str]:
-    """Attend qu'un incident s'ouvre puis se clôture (CLOSED). Renvoie (succès, message)."""
+def wait_for_recovery(args: argparse.Namespace, deadline: float,
+                      ignore: set[str] = frozenset()) -> tuple[bool, str]:
+    """Attend qu'un NOUVEL incident s'ouvre puis se clôture (CLOSED). Renvoie (succès, message).
+
+    `ignore` contient les incidents déjà présents avant l'attaque : le journal est persistant,
+    un incident clôturé lors d'un essai précédent ne doit pas faire croire à un succès.
+    """
     opened = None
     while time.monotonic() < deadline:
-        current = incidents(args.dashboard)
+        current = [i for i in incidents(args.dashboard) if i["id"] not in ignore]
         active = [i for i in current if i["status"] in ("OPEN", "REMEDIATING", "VERIFYING")]
         closed = [i for i in current if i["status"] == "CLOSED"]
         failed = [i for i in current if i["status"] == "FAILED"]
@@ -111,17 +150,24 @@ def wait_for_recovery(args: argparse.Namespace, deadline: float) -> tuple[bool, 
     return False, f"incident {opened} non clôturé avant la fin du délai"
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Scénario de résilience de bout en bout")
-    parser.add_argument("--waf", default="http://127.0.0.1", help="URL du WAF (démo : http://192.168.137.1)")
+    parser.add_argument("--waf", default="http://192.168.137.1", help="URL du WAF (dans 192.168.137.0/24)")
     parser.add_argument("--prometheus", default="http://127.0.0.1:9090")
     parser.add_argument("--dashboard", default="http://127.0.0.1:5173")
     parser.add_argument("--attack-seconds", type=float, default=90)
     parser.add_argument("--concurrency", type=int, default=200)
-    parser.add_argument("--auth", action="store_true", help="Flood authentifié (recommandé, ATTACK_PASSWORD requis)")
+    parser.add_argument("--auth", action=argparse.BooleanOptionalAction, default=True,
+                        help="Flood authentifié, par défaut (--no-auth : flood anonyme, sans charge base)")
     parser.add_argument("--timeout", type=float, default=300, help="Délai maximal pour la reprise (s)")
     parser.add_argument("--poll-seconds", type=float, default=5)
-    args = parser.parse_args()
+    parser.add_argument("--ban-wait", type=float, default=DEFAULT_BAN_WAIT,
+                        help="Attente maximale de la levée du ban avant la transaction finale (s)")
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
 
     password = os.environ.get("ATTACK_PASSWORD")
     if not password:
@@ -139,10 +185,15 @@ def main() -> int:
         print(f"    état initial : canary_up={prometheus_scalar(args.prometheus, 'canary_up')}")
 
         step(2, "Lancement de l'attaque DoS")
+        known = {i["id"] for i in incidents(args.dashboard)}
         attack = launch_attack(args)
+        if attack is None:
+            print("    échec : attaque non lancée (cible hors 192.168.137.0/24 ? ATTACK_PASSWORD ?)",
+                  file=sys.stderr)
+            return 1
 
         step(3, "Attente de la boucle (détection, remédiation, vérification)")
-        recovered, message = wait_for_recovery(args, time.monotonic() + args.timeout)
+        recovered, message = wait_for_recovery(args, time.monotonic() + args.timeout, known)
         attack.terminate()
         try:
             attack.wait(timeout=10)
@@ -155,8 +206,7 @@ def main() -> int:
         step(4, "Transaction métier finale (plateforme à nouveau utilisable)")
         control = control_transaction(args.dashboard)
         print(f"    transaction de contrôle : ok={control.get('ok')} status={control.get('status')}")
-        token = login(args.waf, password)
-        after = business_transaction(args.waf, token)
+        after = final_transaction(args.waf, password, args.ban_wait)
         print(f"    transaction {after.get('id')} : {after.get('status')}")
         if not control.get("ok") or after.get("status") != "COMPLETED":
             print("    échec : la plateforme ne traite pas de transaction après reprise", file=sys.stderr)
