@@ -47,7 +47,7 @@ ollama pull nomic-embed-text   # OLLAMA_EMBED_MODEL (embeddings)
 docker compose --profile ia up -d --build assistant-rag
 ```
 
-Puis ouvrir http://127.0.0.1:8501. Variables : `OLLAMA_BASE_URL`, `OLLAMA_MODEL` (`.env`),
+Puis ouvrir <http://127.0.0.1:8501>. Variables : `OLLAMA_BASE_URL`, `OLLAMA_MODEL` (`.env`),
 `OLLAMA_EMBED_MODEL`, `RAG_TOP_K`, `RAG_SCORE_FLOOR` (défauts dans `rag.py`).
 
 ## Tests

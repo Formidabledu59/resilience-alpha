@@ -7,8 +7,23 @@ Tout ce qu'il faut installer et toutes les commandes pour lancer RESILIENCE-ALPH
 | Je veux… | Aller à |
 |---|---|
 | Juste lancer les tests (n'importe quel PC, sans Docker) | [1](#1-installer-les-outils), [2](#2-récupérer-le-dépôt), [3](#3-lancer-les-tests-sans-docker) |
-| Faire tourner la plateforme sur mon PC | [1](#1-installer-les-outils) à [5](#5-démarrer-la-plateforme) |
-| Préparer la démonstration complète | toutes les étapes |
+| Faire tourner la plateforme sur mon PC | [1](#1-installer-les-outils) à [6](#6-vérifier-que-tout-marche) |
+| Utiliser la plateforme (frontal, dashboard, Grafana) | [guide d'utilisation, README §7](README.md#7-utiliser-et-vérifier-la-plateforme) |
+| Préparer et jouer la démonstration | [9](#9-lancer-la-démonstration-attaque-et-reprise-autonome) et [12](#12-jour-j--check-list-de-la-démonstration-et-du-clip-chrono) |
+
+### Les adresses à connaître
+
+| Quoi | Adresse | Depuis |
+|---|---|---|
+| Frontal de paiement (via le WAF) | <http://192.168.137.1> en démonstration, <http://127.0.0.1> en développement | PC Hôte, PC Attaquant (démo) |
+| Dashboard de supervision | <http://127.0.0.1:5173> | PC Hôte uniquement |
+| Grafana | <http://127.0.0.1:3000> | PC Hôte uniquement |
+| Prometheus | <http://127.0.0.1:9090> (cibles : <http://127.0.0.1:9090/targets>) | PC Hôte uniquement |
+| Assistant RAG | <http://127.0.0.1:8501> | PC Hôte uniquement |
+| Ollama (natif) | `http://host.docker.internal:11434` vu des conteneurs, <http://127.0.0.1:11434> sur le PC Hôte | PC Hôte |
+| Dépôt GitHub | <https://github.com/Formidabledu59/resilience-alpha> | partout |
+
+Seul le WAF est publié sur le réseau (`192.168.137.1:80`). Tout le reste est lié à `127.0.0.1` : ces adresses ne s'ouvrent **que sur le PC Hôte**, jamais depuis le PC Attaquant.
 
 ---
 
@@ -20,7 +35,7 @@ Tout ce qu'il faut installer et toutes les commandes pour lancer RESILIENCE-ALPH
 |---|---|---|---|
 | Git | récente | Récupérer le dépôt, commiter | `winget install --id Git.Git` |
 | Python | **3.11 ou plus** (3.12 conseillé) | Tests, scripts d'attaque, scénario de bout en bout | `winget install --id Python.Python.3.12` |
-| Node.js | **22** | Tests du frontal et du dashboard (facultatif) | installeur « 22.x LTS » sur https://nodejs.org |
+| Node.js | **22** | Tests du frontal et du dashboard (facultatif) | installeur « 22.x LTS » sur <https://nodejs.org> |
 | GitHub CLI | récente | Ouvrir et fusionner les PR (facultatif) | `winget install --id GitHub.cli` puis `gh auth login` |
 
 > Après une installation par `winget`, **fermer et rouvrir** le terminal (et VS Code s'il est ouvert) : sinon la nouvelle commande n'est pas trouvée (« le terme n'est pas reconnu »). En dépannage, on peut recharger le PATH sans fermer :
@@ -78,13 +93,13 @@ Déjà cloné : `git checkout main` puis `git pull`.
 Une seule commande, sur n'importe quel PC qui a Python (et Node.js pour le front) :
 
 ```powershell
-python tests/run_all.py                 # tout : 11 suites (la première fois : quelques minutes d'installation)
+python tests/run_all.py                 # tout : 12 suites (la première fois : quelques minutes d'installation)
 python tests/run_all.py --python-only   # sans Node.js
 python tests/run_all.py --only canary   # une seule suite
 python tests/run_all.py --no-install    # relance rapide
 ```
 
-Les dépendances sont installées dans `.venv-tests/` (ignoré par Git) : rien n'est installé dans le Python du PC. Résultat attendu : `11/11 suites OK`. Détail des suites : [README, section 14](README.md#14-tests).
+Les dépendances sont installées dans `.venv-tests/` (ignoré par Git) : rien n'est installé dans le Python du PC. Résultat attendu : `12/12 suites OK` (178 tests le 22/10). Détail des suites : [README, section 14](README.md#14-tests).
 
 ---
 
@@ -128,12 +143,17 @@ Le WAF est le seul service joignable depuis le réseau. Son adresse se règle da
 
 | Mode | `WAF_BIND_IP` | Point d'accès `RESILIENCE-G16` | Frontal |
 |---|---|---|---|
-| **Démonstration** (PC Attaquant, scénario complet) | `192.168.137.1` | **obligatoire, activé AVANT Docker Desktop** | http://192.168.137.1 |
-| **Développement** (PC Hôte seul) | `127.0.0.1` | inutile | http://127.0.0.1 |
+| **Démonstration** (PC Attaquant, scénario complet) | `192.168.137.1` | **obligatoire, activé AVANT Docker Desktop** | <http://192.168.137.1> |
+| **Développement** (PC Hôte seul) | `127.0.0.1` | inutile | <http://127.0.0.1> |
 
 > Ne **jamais** mettre `0.0.0.0` : le PC Hôte est aussi sur le WiFi du campus.
 
-**Activer le point d'accès (mode démonstration)** : Paramètres Windows → Réseau et Internet → Point d'accès sans fil mobile. Nom du réseau `RESILIENCE-G16`, mot de passe choisi par l'équipe, puis activer. **Ensuite seulement**, démarrer (ou redémarrer) Docker Desktop. Vérifier que l'adresse existe :
+**Activer le point d'accès (mode démonstration)** : Paramètres Windows → Réseau et Internet → Point d'accès sans fil mobile.
+- Nom du réseau : **`RESILIENCE-G16`** (Windows propose un nom par défaut, à remplacer), mot de passe choisi par l'équipe ;
+- **Économie d'énergie : désactivé**, sinon Windows éteint le point d'accès après ~5 minutes sans appareil connecté et le WAF devient injoignable ;
+- activer, puis **seulement ensuite** démarrer (ou redémarrer) Docker Desktop.
+
+Vérifier que l'adresse existe :
 
 ```powershell
 Get-NetIPAddress -IPAddress 192.168.137.1
@@ -154,7 +174,7 @@ Les services sont rangés par **profiles**. On peut tout lancer d'un coup, ou mo
 | Profile | Services | Commande |
 |---|---|---|
 | (aucun) | Observabilité : prometheus, alertmanager, loki, alloy, grafana, socket-proxy-ro | `docker compose up -d` |
-| `app` | waf, frontend, auth-service, payment-api, postgres, canary, dashboard | `docker compose --profile app up -d --build` |
+| `app` | waf, frontend, auth-service, payment-api, postgres, canary, dashboard (sans biométrie par défaut) | `docker compose --profile app up -d --build` |
 | `security` | vault, vault-init (secrets dans Vault) | `docker compose --profile app --profile security up -d --build` |
 | `ia` | ml-detector, assistant-rag | ajouter `--profile ia` |
 | `remediation` | remediation-engine, socket-proxy-rw | ajouter `--profile remediation` |
@@ -171,7 +191,9 @@ Le premier lancement télécharge les images et construit les services : compter
 docker compose ps -a
 ```
 
-Tous les conteneurs doivent être `(healthy)`, sauf `vault-init` qui s'arrête normalement après avoir initialisé Vault (`Exited (0)`). Seuls `192.168.137.1:80` (ou `127.0.0.1:80`) et des ports en `127.0.0.1` doivent apparaître dans la colonne `PORTS`.
+19 conteneurs : les 18 services doivent être `(healthy)`, et `vault-init` s'arrête normalement après avoir initialisé Vault (`Exited (0)`). Dans la colonne `PORTS`, seuls doivent apparaître `192.168.137.1:80->8080` (ou `127.0.0.1:80->8080`) et `127.0.0.1:3000`, `127.0.0.1:5173`, `127.0.0.1:8501`, `127.0.0.1:9090`. Jamais `0.0.0.0`.
+
+> Après un `git pull` qui modifie un service, reconstruire : relancer la même commande avec `--build`. Pour être sûr que le front et le dashboard reprennent les modifications : `docker compose --profile app build --no-cache frontend dashboard`.
 
 > Le profile `ia` exige `OLLAMA_BASE_URL` et `OLLAMA_MODEL` dans `.env` (déjà présents via `.env.example`). Le conteneur démarre même si Ollama est éteint ; l'assistant indique alors qu'il ne peut pas répondre.
 
@@ -183,11 +205,13 @@ Tous les conteneurs doivent être `(healthy)`, sauf `vault-init` qui s'arrête n
 
 | Interface | Adresse | Ce qu'on doit voir |
 |---|---|---|
-| Frontal de paiement | http://192.168.137.1 (ou http://127.0.0.1) | Connexion avec `demo` / `AUTH_DEMO_PASSWORD`, puis un virement `COMPLETED` |
-| Dashboard de supervision | http://127.0.0.1:5173 | Phase « Avant », canari à 100 % |
-| Grafana | http://127.0.0.1:3000 | Dashboards « Resilience - Vue globale » et « Frontal et sécurité » |
-| Prometheus | http://127.0.0.1:9090/targets | Cibles **UP** ; la requête `canary_up` vaut `1` |
-| Assistant RAG | http://127.0.0.1:8501 | Interface de discussion (voir étape 7) |
+| Frontal de paiement | <http://192.168.137.1> (ou <http://127.0.0.1>) | Connexion avec `demo` / `AUTH_DEMO_PASSWORD`, puis un virement `COMPLETED` |
+| Dashboard de supervision | <http://127.0.0.1:5173> | La supervision s'affiche directement (pas d'écran de connexion : biométrie désactivée), phase « Avant », canari à 100 % |
+| Grafana | <http://127.0.0.1:3000> | Dashboards « Resilience - Vue globale » et « Frontal et sécurité » |
+| Prometheus | <http://127.0.0.1:9090/targets> | Toutes les cibles **UP** ; la requête `canary_up` vaut `1` et `ml_model_fallback` vaut `0` une fois le modèle entraîné (étape 12) |
+| Assistant RAG | <http://127.0.0.1:8501> | Interface de discussion (voir étape 7) |
+
+Utilisation détaillée de chaque interface : [guide d'utilisation, README §7](README.md#7-utiliser-et-vérifier-la-plateforme).
 
 ### Une transaction en ligne de commande
 
@@ -200,7 +224,7 @@ docker run --rm --network resilience-alpha_app-net -e PASS=$pass -v "${PWD}/test
 
 Attendu : `Résultat : COMPLETED`.
 
-Pas à pas détaillé et dépannage de chaque service : [`infra/README.md`](infra/README.md) et [README, section 7](README.md#7-utiliser-et-vérifier-la-plateforme).
+Pas à pas détaillé et dépannage de chaque service : [`infra/README.md`](infra/README.md).
 
 ---
 
@@ -213,6 +237,8 @@ ollama pull llama3.1:8b         # génération (8B maximum)
 ollama pull nomic-embed-text    # embeddings de l'assistant
 ollama list                     # les deux modèles apparaissent
 ```
+
+Vérifier qu'Ollama répond sur le PC Hôte : <http://127.0.0.1:11434> affiche « Ollama is running ».
 
 Dans `.env` du PC Hôte :
 
@@ -252,13 +278,13 @@ $env:BIO_DATA_DIR = "$PWD\data"
 python -m uvicorn app:app --host 0.0.0.0 --port 8700
 ```
 
-Puis dans le dashboard (http://127.0.0.1:5173), back-office → onglet **Habilitations** pour enrôler un visage. Le firmware de l'ESP8266 se flashe avec PlatformIO : [`biometrics/esp8266/README.md`](biometrics/esp8266/README.md). Détails et limites : [`biometrics/README.md`](biometrics/README.md).
+Puis dans le dashboard (<http://127.0.0.1:5173>), back-office → onglet **Habilitations** pour enrôler un visage. Le firmware de l'ESP8266 se flashe avec PlatformIO : [`biometrics/esp8266/README.md`](biometrics/esp8266/README.md). Détails et limites : [`biometrics/README.md`](biometrics/README.md).
 
 ---
 
 ## 9. Lancer la démonstration (attaque et reprise autonome)
 
-Prérequis : **mode démonstration** (point d'accès actif avant Docker, `WAF_BIND_IP=192.168.137.1`) et **stack complète** démarrée. Les scripts d'attaque refusent toute cible hors `192.168.137.0/24`.
+Prérequis : **mode démonstration** (point d'accès actif avant Docker, `WAF_BIND_IP=192.168.137.1`), **stack complète** démarrée, **modèle ML entraîné** et **réglages de démonstration** appliqués (étape 12, points 2 et 3). Les scripts d'attaque refusent toute cible hors `192.168.137.0/24`.
 
 ### Depuis le PC Attaquant (connecté au WiFi `RESILIENCE-G16`)
 
@@ -272,10 +298,12 @@ python attack/sqli/inject.py --target http://192.168.137.1
 
 # Déni de service authentifié (mot de passe demo : le demander au PC Hôte, jamais en argument)
 $env:ATTACK_PASSWORD = '<mot de passe demo>'
-python attack/dos/flood.py --target http://192.168.137.1 --auth demo --duration 90 --concurrency 300
+python attack/dos/flood.py --target http://192.168.137.1 --auth demo --duration 90 --concurrency 200
 ```
 
-Sur le PC Hôte, suivre le dashboard (http://127.0.0.1:5173) : Avant → Pendant → Remédiation → Après.
+Vérifier d'abord, depuis le PC Attaquant, que le frontal s'ouvre : <http://192.168.137.1>.
+
+Sur le PC Hôte, suivre le dashboard (<http://127.0.0.1:5173>) **sans rien toucher** : Avant → Pendant (score ML au-dessus de 0,7) → Remédiation (ban + relance) → Après (transaction de contrôle `COMPLETED`, incident clos). Mesuré le 22/10 : 37 à 75 s ([répétition générale](docs/test-results/repetition-generale.md)).
 
 ### Scénario de bout en bout automatisé (sur le PC Hôte)
 
@@ -284,10 +312,10 @@ Il enchaîne transaction, attaque, détection, remédiation et transaction final
 ```powershell
 pip install -r tests/e2e/requirements.txt
 $env:ATTACK_PASSWORD = (Select-String -Path .env -Pattern '^AUTH_DEMO_PASSWORD=(.*)').Matches[0].Groups[1].Value
-python tests/e2e/resilience_scenario.py
+python tests/e2e/resilience_scenario.py --runs 3 --concurrency 200
 ```
 
-Code de sortie 0 = boucle de reprise prouvée. Si aucun incident ne se déclenche, l'attaque n'a pas assez dégradé le service : relâcher `FRONTEND_API_RATE_LIMIT` dans `.env` (puis `docker compose --profile app up -d frontend`) et monter `--concurrency`. Réglages et mesures : [`docs/test-results/calibrage-attaque-dos.md`](docs/test-results/calibrage-attaque-dos.md).
+Code de sortie 0 = boucle de reprise prouvée à chaque essai ; un tableau chronométré s'affiche (ajouter `--report docs/test-results/repetition-generale.md` pour le garder). Si aucun incident ne se déclenche, l'attaque n'a pas assez dégradé le service : vérifier les réglages de démonstration (étape 12, point 2) et monter `--concurrency`. Réglages et mesures : [`docs/test-results/calibrage-attaque-dos.md`](docs/test-results/calibrage-attaque-dos.md).
 
 > La remédiation peut bannir l'IP de l'attaquant pendant 5 minutes. Derrière Docker Desktop, tout le trafic externe partage la même IP : le frontal est alors inaccessible depuis l'extérieur pendant le ban, le canary (interne) continue. C'est attendu.
 
@@ -309,7 +337,11 @@ Après un `down -v`, on peut régénérer `.env` (étape 4.1) : bases, Vault et 
 | Symptôme | Cause | Solution |
 |---|---|---|
 | `error during connect ... dockerDesktopLinuxEngine` | Docker Desktop n'est pas démarré | Lancer Docker Desktop, attendre « Engine running » |
-| Le WAF reste `Created`, le frontal ne répond pas | `192.168.137.1` n'existe pas (point d'accès inactif ou activé après Docker) | Activer le point d'accès puis redémarrer Docker Desktop, ou passer `WAF_BIND_IP=127.0.0.1` |
+| Le WAF reste `Created`, le frontal ne répond pas | `192.168.137.1` n'existe pas (point d'accès inactif ou activé après Docker) | Activer le point d'accès, puis `docker compose --profile app up -d --force-recreate waf` (ou passer `WAF_BIND_IP=127.0.0.1`) |
+| Le frontal ne répond plus au bout de quelques minutes | Point d'accès éteint par l'économie d'énergie de Windows | Désactiver l'économie d'énergie (étape 4.2), rallumer le point d'accès, recréer le WAF (ligne ci-dessus) |
+| `403` sur le frontal après une attaque | IP bannie par la remédiation (5 min, levée automatique) | Attendre ; le journal de l'incident dans le dashboard indique la levée du ban |
+| Dashboard : « La passerelle biométrique ne répond pas » | `BACKOFFICE_BIOMETRICS=true` dans `.env` sans passerelle lancée | Remettre `false`, puis `docker compose --profile app up -d dashboard` |
+| Score ML élevé sans attaque, `ml_model_fallback = 1` | Modèle de repli synthétique (aucun modèle entraîné) | Entraîner le modèle (étape 12, point 3) |
 | `gh`, `python`, `node`… « n'est pas reconnu » | Terminal ouvert avant l'installation | Fermer et rouvrir le terminal (et VS Code), ou recharger le PATH (étape 1) |
 | `npm ci` plante dans le front | npm 10 (fourni avec Node 22) | Utiliser `python tests/run_all.py` qui lance npm 11.21.0 ; dans les Dockerfile c'est déjà épinglé |
 | `Activate.ps1 ne peut pas être chargé` | Politique d'exécution PowerShell | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
@@ -338,14 +370,14 @@ Le jury note surtout l'**axe 1** (5 points) : attaque depuis le PC Attaquant, d�
    - limites par défaut (50 r/s et 10 r/s) : l'attaque est absorbée, la règle SOC bannit l'attaquant en ~5 s, le ML ne déclenche pas.
 
    Après un changement : `docker compose --profile app up -d waf frontend`.
-3. Stack complète (étape 5), puis **modèle ML entraîné sur du vrai trafic** (30 min sans attaque) :
+3. Stack complète (étape 5), puis **modèle ML entraîné sur du vrai trafic** : laisser tourner la plateforme **30 minutes sans attaque**, puis :
    ```powershell
    pip install -r ml/detector/requirements.txt
    python ml/training/collect.py --minutes 30 --out ml/data/nominal.csv
    python ml/training/train.py --data ml/data/nominal.csv
    docker compose --profile ia restart ml-detector
    ```
-   Dans Prometheus, `ml_model_fallback` doit valoir `0`.
+   Dans Prometheus (<http://127.0.0.1:9090>), `ml_model_fallback` doit valoir `0`. Le modèle (`ml/models/model.joblib`) n'est **pas** versionné : à refaire sur chaque PC qui sert à la démonstration, ou copier le fichier.
 4. **Calibrer le DoS** (trouve la charge qui déclenche la détection ML) :
    ```powershell
    pip install -r tests/e2e/requirements.txt
@@ -370,11 +402,12 @@ Le jury note surtout l'**axe 1** (5 points) : attaque depuis le PC Attaquant, d�
 | Remédiation | Incident ouvert, playbooks (ban, relance) affichés en direct | 30-35 s |
 | Après | 3 relevés du canari OK (~15 s), transaction de contrôle `COMPLETED`, incident `CLOSED` | 35-55 s |
 
-Si la boucle dépasse 60 s en répétition, réduire `ML_ALERT_CONSECUTIVE` à 2 (détection plus rapide) ou durcir l'attaque pour que la dégradation soit plus nette ; ne **jamais** accélérer ni couper la vidéo.
+Si la boucle dépasse 60 s en répétition, mettre `ML_ALERT_CONSECUTIVE=2` dans `.env` puis `docker compose --profile ia up -d ml-detector` (détection ~5 s plus tôt), ou durcir l'attaque pour que la dégradation soit plus nette ; ne **jamais** accélérer ni couper la vidéo. Mesuré le 22/10 : 3 essais sur 6 sous 60 s, les plus lents ayant subi une coupure du point d'accès.
 
 ### Le matin du jury
 
-- Tout allumer 30 minutes avant : point d'accès, Docker, stack, Ollama, passerelle biométrique.
-- `docker compose ps -a` : tout `healthy`. Dashboard en phase « Avant ». Une transaction manuelle `COMPLETED` depuis le frontal.
+- Tout allumer 30 minutes avant : point d'accès (économie d'énergie désactivée), Docker, stack, Ollama. Pas de passerelle biométrique (désactivée).
+- Connecter le PC Attaquant à `RESILIENCE-G16` et ouvrir <http://192.168.137.1> depuis ce poste.
+- `docker compose ps -a` : tout `healthy`. Dashboard (<http://127.0.0.1:5173>) en phase « Avant ». `ml_model_fallback = 0` dans Prometheus. Une transaction manuelle `COMPLETED` depuis le frontal.
 - Prévoir l'annonce au jury : après la remédiation, l'IP de l'attaquant est bannie 5 minutes (comportement voulu), le service reste disponible pour les clients internes et le canari.
 - Plan B, annoncé comme tel : si le DoS ne dégrade pas assez le service en direct, montrer la seconde voie automatique (arrêt de `payment-api` → `TargetDown` → relance Ansible → transaction de contrôle), puis le Clip Chrono pour la détection ML. Ce plan B prouve la reprise autonome mais **pas** une attaque menée depuis le PC Attaquant : il ne remplace pas un DoS calibré.

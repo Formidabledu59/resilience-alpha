@@ -9,10 +9,10 @@
 
 | Outil | Adresse | Usage |
 |---|---|---|
-| Dashboard de supervision | http://127.0.0.1:5173 | Phase, chiffres clés, journal des incidents, transaction de contrôle |
-| Assistant opérateur (RAG) | http://127.0.0.1:8501 | Retrouver une procédure (lecture seule) |
-| Grafana | http://127.0.0.1:3000 | Dashboards observabilité et sécurité |
-| Prometheus | http://127.0.0.1:9090 | `canary_up`, `ml_anomaly_score`, cibles |
+| Dashboard de supervision | <http://127.0.0.1:5173> | Phase, chiffres clés, journal des incidents, transaction de contrôle |
+| Assistant opérateur (RAG) | <http://127.0.0.1:8501> | Retrouver une procédure (lecture seule) |
+| Grafana | <http://127.0.0.1:3000> | Dashboards observabilité et sécurité |
+| Prometheus | <http://127.0.0.1:9090> | `canary_up`, `ml_anomaly_score`, cibles |
 
 Réflexe commun : **la reprise n'est acquise que si une transaction de contrôle réussit**
 (bouton du dashboard ou `POST /probe` du canari), avec `canary_up = 1`.

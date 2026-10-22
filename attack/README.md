@@ -33,9 +33,9 @@ Ils servent la démonstration : provoquer un incident visible, que la plateforme
 
 ## Pendant l'attaque, observer
 
-- **Dashboard de supervision** : http://127.0.0.1:5173 (phase qui passe à « Pendant », puis « Remédiation », puis « Après »).
-- **Grafana** : http://127.0.0.1:3000, dashboards « Vue globale » et « Frontal et sécurité ».
-- **Prometheus** : http://127.0.0.1:9090, métrique `canary_up`.
+- **Dashboard de supervision** : <http://127.0.0.1:5173> (phase qui passe à « Pendant », puis « Remédiation », puis « Après »).
+- **Grafana** : <http://127.0.0.1:3000>, dashboards « Vue globale » et « Frontal et sécurité ».
+- **Prometheus** : <http://127.0.0.1:9090>, métrique `canary_up`.
 
 ## Vérification de l'IP source (à faire avec l'infra)
 

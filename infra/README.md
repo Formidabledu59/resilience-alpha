@@ -30,8 +30,8 @@ infra/
 
 | Service | Rôle | Accès depuis le PC Hôte |
 |---|---|---|
-| `prometheus` | Métriques | http://127.0.0.1:9090 |
-| `grafana` | Dashboards, exploration des logs | http://127.0.0.1:3000 |
+| `prometheus` | Métriques | <http://127.0.0.1:9090> |
+| `grafana` | Dashboards, exploration des logs | <http://127.0.0.1:3000> |
 | `alertmanager` | Routage des alertes | aucun port publié |
 | `loki` | Stockage des logs | aucun port publié |
 | `alloy` | Collecte des logs des conteneurs | aucun port publié |
@@ -105,7 +105,7 @@ Attendre environ une minute : la colonne `STATUS` doit afficher `(healthy)` pour
 
 Vérifier aussi l'exposition : seuls `127.0.0.1:3000` (Grafana) et `127.0.0.1:9090` (Prometheus) doivent apparaître dans la colonne `PORTS`. Aucun port ne doit être publié sur `0.0.0.0`.
 
-## 5. Vérifier Prometheus : http://127.0.0.1:9090
+## 5. Vérifier Prometheus : <http://127.0.0.1:9090>
 
 **Status → Target health** (`/targets`) :
 
@@ -118,7 +118,7 @@ Vérifier aussi l'exposition : seuls `127.0.0.1:3000` (Grafana) et `127.0.0.1:90
 
 > Ne sont volontairement pas scrapés : `postgres` et `vault` (la santé de la base est couverte par le canary), `frontend`, `dashboard` et `assistant-rag` (pas de `/metrics` natif), ainsi que le `waf` (les métriques de blocage viendront des logs ModSecurity dans Loki).
 
-## 6. Vérifier Grafana : http://127.0.0.1:3000
+## 6. Vérifier Grafana : <http://127.0.0.1:3000>
 
 1. Se connecter avec `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` (valeurs du `.env`, voir étape 2).
 2. La page d'accueil est le dashboard **Resilience - Vue globale** (dossier *Resilience*) :
@@ -189,7 +189,7 @@ docker compose --profile app up -d --build
 
 Le WAF publie le port 80 sur `WAF_BIND_IP` (`.env`). Si le point d'accès `RESILIENCE-G16` n'est pas actif, `192.168.137.1` n'existe pas : le WAF reste à l'état `Created` et le canary aussi. Dans ce cas, mettre `WAF_BIND_IP=127.0.0.1` (développement sur le PC Hôte seul).
 
-Résultat attendu : 13 conteneurs `healthy` (les 6 de l'observabilité et les 7 du profile `app`). Le frontal est sur http://127.0.0.1 (ou http://192.168.137.1), le dashboard sur http://127.0.0.1:5173. Utilisation pas à pas : [README, section 7](../README.md#7-utiliser-et-vérifier-la-plateforme). Détails du WAF : [`security/waf/README.md`](../security/waf/README.md).
+Résultat attendu : 13 conteneurs `healthy` (les 6 de l'observabilité et les 7 du profile `app`). Le frontal est sur <http://127.0.0.1> (ou <http://192.168.137.1>), le dashboard sur <http://127.0.0.1:5173>. Utilisation pas à pas : [README, section 7](../README.md#7-utiliser-et-vérifier-la-plateforme). Détails du WAF : [`security/waf/README.md`](../security/waf/README.md).
 
 Stack complète (démonstration) :
 

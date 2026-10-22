@@ -288,10 +288,11 @@ ansible-playbook infra/ansible/playbooks/deploy.yml
 ### 6.4 Modèle de langage
 
 ```bash
-ollama pull <modèle retenu>
+ollama pull llama3.1:8b         # génération (8B maximum, OLLAMA_MODEL)
+ollama pull nomic-embed-text    # embeddings de l'assistant (OLLAMA_EMBED_MODEL)
 ```
 
-Commande à lancer sur la machine qui héberge Ollama en natif (PC Hôte ou PC délestage IA). Le modèle et l'URL d'Ollama sont configurés dans `.env` (`OLLAMA_MODEL`, `OLLAMA_BASE_URL`) :
+Commandes à lancer sur la machine qui héberge Ollama en natif (PC Hôte ou PC délestage IA). Sur le PC Hôte, <http://127.0.0.1:11434> doit afficher « Ollama is running ». Le modèle et l'URL d'Ollama sont configurés dans `.env` (`OLLAMA_MODEL`, `OLLAMA_BASE_URL`) :
 
 | Emplacement d'Ollama | `OLLAMA_BASE_URL` |
 |---|---|
@@ -309,35 +310,42 @@ docker compose down -v     # arrêt et suppression des volumes (remise à zéro)
 
 ## 7. Utiliser et vérifier la plateforme
 
-Procédure pas à pas, sous Windows (PowerShell, à la racine du dépôt). Le détail du démarrage et le dépannage sont dans [`infra/README.md`](infra/README.md).
+**Guide d'utilisation**, sous Windows (PowerShell, à la racine du dépôt). L'installation pas à pas (outils, `.env`, point d'accès, dépannage) est dans [**DEMARRAGE.md**](DEMARRAGE.md) ; le détail de l'infrastructure dans [`infra/README.md`](infra/README.md).
+
+| Interface | Adresse | Accès |
+|---|---|---|
+| Frontal de paiement (via le WAF) | <http://192.168.137.1> (démonstration) ou <http://127.0.0.1> (développement) | PC Hôte et PC Attaquant |
+| Dashboard de supervision | <http://127.0.0.1:5173> | PC Hôte uniquement |
+| Grafana | <http://127.0.0.1:3000> | PC Hôte uniquement |
+| Prometheus | <http://127.0.0.1:9090> | PC Hôte uniquement |
+| Assistant RAG | <http://127.0.0.1:8501> | PC Hôte uniquement |
 
 ### 7.1 Démarrer
 
 1. Démarrer **Docker Desktop** et attendre qu'il soit prêt.
-2. Créer le fichier `.env` avec des secrets aléatoires : bloc PowerShell de [`infra/README.md`](infra/README.md), étape 2. À faire une seule fois.
+2. Créer le fichier `.env` avec des secrets aléatoires : bloc PowerShell de [DEMARRAGE.md, étape 4.1](DEMARRAGE.md#41-créer-le-fichier-env-avec-des-secrets-aléatoires). À faire une seule fois.
 3. Choisir l'adresse du WAF dans `.env` :
-   - démonstration : `WAF_BIND_IP=192.168.137.1`, et activer le point d'accès `RESILIENCE-G16` **avant** Docker Desktop ;
+   - démonstration : `WAF_BIND_IP=192.168.137.1`, et activer le point d'accès `RESILIENCE-G16` **avant** Docker Desktop, économie d'énergie désactivée ;
    - développement sur le PC Hôte seul : `WAF_BIND_IP=127.0.0.1`.
-4. Lancer la stack d'observabilité, puis la chaîne applicative (profile `app`) :
+4. Lancer la stack complète (ou seulement `--profile app` pour la chaîne de paiement) :
 
    ```powershell
-   docker compose up -d
-   docker compose --profile app up -d --build
+   docker compose --profile app --profile security --profile ia --profile remediation up -d --build
    ```
 
 5. Attendre environ une minute, puis vérifier que tout est `healthy` :
 
    ```powershell
-   docker compose ps -a
+   docker compose --profile app --profile security --profile ia --profile remediation ps -a
    ```
 
-   13 conteneurs attendus : les 6 de l'observabilité, puis waf, frontend, auth-service, payment-api, postgres, canary et dashboard.
+   Stack complète : 19 conteneurs, les 18 services `healthy` et `vault-init` en `Exited (0)` (normal). Profile `app` seul : 13 conteneurs (les 6 de l'observabilité, puis waf, frontend, auth-service, payment-api, postgres, canary et dashboard).
 
 ### 7.2 Utiliser le frontal de paiement
 
 Le frontal est servi **uniquement à travers le WAF**, comme pour un vrai client.
 
-1. Ouvrir **http://192.168.137.1** (démonstration) ou **http://127.0.0.1** (développement, `WAF_BIND_IP=127.0.0.1`).
+1. Ouvrir <http://192.168.137.1> (démonstration) ou <http://127.0.0.1> (développement, `WAF_BIND_IP=127.0.0.1`).
 2. Se connecter avec l'utilisateur fictif **`demo`**. Son mot de passe est celui généré dans `.env` :
 
    ```powershell
@@ -353,7 +361,7 @@ La session dure 15 minutes et s'efface à la fermeture de l'onglet.
 
 ### 7.3 Suivre la démonstration sur le dashboard
 
-Ouvrir **http://127.0.0.1:5173** (PC Hôte uniquement).
+Ouvrir <http://127.0.0.1:5173> (PC Hôte uniquement). La supervision s'affiche directement : la porte biométrique du back-office (consigne additionnelle 1) est préparée mais désactivée par défaut (`BACKOFFICE_BIOMETRICS=false`, voir [DEMARRAGE.md §8](DEMARRAGE.md#8-back-office-biométrique-consigne-additionnelle-1--optionnel-désactivé-par-défaut)).
 
 - **Bandeau de phase** : Avant (nominal), Pendant (incident ou service dégradé), Remédiation, Après (reprise confirmée).
 - **Chiffres clés et courbes** sur 15 minutes : canari, taux de succès, latence p95, débit, erreurs 5xx, score d'anomalie. Survoler une courbe affiche la valeur ; « Voir les valeurs » ouvre le tableau.
@@ -365,10 +373,14 @@ Ouvrir **http://127.0.0.1:5173** (PC Hôte uniquement).
 
 | Outil | Adresse | Ce qu'on y vérifie |
 |---|---|---|
-| Grafana | http://127.0.0.1:3000 | Identifiants : `Select-String -Path .env -Pattern '^GRAFANA_ADMIN_'`. Dashboards « Resilience - Vue globale » (cibles, logs) et « Resilience - Frontal et sécurité » (pages vues, 404, rate-limit, échecs de connexion) |
-| Prometheus | http://127.0.0.1:9090/targets | auth-service, payment-api, canary et la stack d'observabilité **UP**. ml-detector et remediation-engine **DOWN** tant que les profiles `ia` et `remediation` ne sont pas démarrés |
+| Grafana | <http://127.0.0.1:3000> | Identifiants : `Select-String -Path .env -Pattern '^GRAFANA_ADMIN_'`. Dashboards « Resilience - Vue globale » (cibles, logs) et « Resilience - Frontal et sécurité » (pages vues, 404, rate-limit, échecs de connexion) |
+| Prometheus | <http://127.0.0.1:9090/targets> | auth-service, payment-api, canary et la stack d'observabilité **UP**. ml-detector et remediation-engine **DOWN** tant que les profiles `ia` et `remediation` ne sont pas démarrés |
 
-Dans Prometheus, la requête `canary_up` doit valoir `1`.
+Dans Prometheus (<http://127.0.0.1:9090>), la requête `canary_up` doit valoir `1`, et `ml_model_fallback` `0` une fois le modèle ML entraîné sur du vrai trafic ([DEMARRAGE.md §12](DEMARRAGE.md#12-jour-j--check-list-de-la-démonstration-et-du-clip-chrono)).
+
+### 7.4 bis Assistant opérateur (RAG)
+
+Ouvrir <http://127.0.0.1:8501> (PC Hôte, Ollama lancé avec les deux modèles, voir 6.4) et poser une question sur les procédures, par exemple « Que faire si un incident passe en FAILED ? ». La réponse cite les documents de `docs/` utilisés. L'assistant est en lecture seule : il aide à comprendre, il ne pilote pas la reprise.
 
 ### 7.5 Passer une transaction en ligne de commande
 
@@ -379,7 +391,11 @@ $pass = (Select-String -Path .env -Pattern '^AUTH_DEMO_PASSWORD=(.*)').Matches[0
 docker run --rm --network resilience-alpha_app-net -e PASS=$pass -v "${PWD}/tests/e2e:/e2e:ro" curlimages/curl:8.22.0 sh /e2e/transaction_curl.sh
 ```
 
-Résultat attendu : authentification OK, solde avant et après, puis `Résultat : COMPLETED` (code de sortie 0). Montant et comptes modifiables avec `-e AMOUNT=25.00 -e FROM=ACC-002 -e TO=ACC-001`. Le scénario complet automatisé (`tests/e2e/resilience_scenario.py` : transaction, attaque, reprise, transaction) est décrit dans [`tests/e2e/README.md`](tests/e2e/README.md).
+Résultat attendu : authentification OK, solde avant et après, puis `Résultat : COMPLETED` (code de sortie 0). Montant et comptes modifiables avec `-e AMOUNT=25.00 -e FROM=ACC-002 -e TO=ACC-001`.
+
+### 7.5 bis Jouer la démonstration
+
+Attaque depuis le PC Attaquant, détection et reprise automatiques, preuve par une nouvelle transaction : mode opératoire complet dans [DEMARRAGE.md §9](DEMARRAGE.md#9-lancer-la-démonstration-attaque-et-reprise-autonome), check-list du jour J et du Clip Chrono dans [DEMARRAGE.md §12](DEMARRAGE.md#12-jour-j--check-list-de-la-démonstration-et-du-clip-chrono). Version automatisée et chronométrée (PC Hôte) : [`tests/e2e/README.md`](tests/e2e/README.md).
 
 ### 7.6 Arrêter
 
