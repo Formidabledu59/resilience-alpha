@@ -93,7 +93,12 @@ Déclinaison technique des scénarios stratégiques (séquence réelle d'une att
 1. L'attaquant lance `attack/dos/flood.py` (flood authentifié) contre `http://192.168.137.1`.
 2. Le trafic sature le rate-limit du WAF puis du frontal ; la latence monte, le canari échoue.
 3. `ml-detector` voit l'anomalie (score au-dessus du seuil) et alerte `remediation-engine`.
-4. Le moteur bannit la source au WAF, vérifie le canari, exécute une transaction de contrôle.
+4. Le moteur bannit la source au WAF, relance payment-api, vérifie le canari, exécute une
+   transaction de contrôle.
+
+> **Scénario cible, pas encore démontré de bout en bout.** Aux réglages par défaut, le WAF et le
+> frontal absorbent le flood : le canari reste à 1 et le score ML ne dépasse pas 0,3. Le
+> calibrage sur le réseau du groupe est en cours ([`calibrage-attaque-dos.md`](../../test-results/calibrage-attaque-dos.md)).
 
 ### SO2 - Injection SQL / XSS (dérivé de SS2)
 
@@ -119,16 +124,16 @@ Déclinaison technique des scénarios stratégiques (séquence réelle d'une att
 
 ### Mesures de sécurité et couverture
 
-| Mesure | Scénarios couverts | État |
-|---|---|---|
-| WAF ModSecurity + OWASP CRS, rate-limit | SO1, SO2, SO3 | Fait |
-| Détection d'anomalies (Isolation Forest) | SO1 | Fait |
-| Remédiation autonome (ban IP, restart, vérification canari) | SO1, SO3 | Fait |
-| Règles SOC (Loki) + alertes (Alertmanager) | SO1, SO2, SO3 | Fait |
-| Vault (secrets chiffrés, lecture seule par service) | ER3, SO4 | Fait |
-| Segmentation réseau, moindre privilège, non-root, read-only | SO4 | Fait |
-| Journal d'audit chaîné SHA-256 | ER5 | Fait |
-| Preuve de reprise par transaction métier (canari) | ER1, ER4 | Fait |
+| Mesure | Scénarios couverts | État | Preuve |
+|---|---|---|---|
+| WAF ModSecurity + OWASP CRS, rate-limit | SO1, SO2, SO3 | Fait, vérifié | `attack/sqli/inject.py` (403), `security/waf/README.md` |
+| Détection d'anomalies (Isolation Forest) | SO1 | Implémenté, **non démontré sur DoS** | `ml/detector/tests/`, `calibrage-attaque-dos.md` |
+| Remédiation autonome (ban IP, restart, vérification canari) | SO1, SO3 | Restart démontré (panne de service) ; ban sur DoS et force brute **non démontrés** | `repetition-boucle-reprise.md`, `services/remediation-engine/tests/` |
+| Règles SOC (Loki) + alertes (Alertmanager) | SO1, SO2, SO3 | Fait, vérifié (inactive → pending → firing) | `security/soc-rules/README.md` |
+| Vault (secrets chiffrés, lecture seule par service) | ER3, SO4 | Fait, vérifié | `security/vault/README.md` |
+| Segmentation réseau, moindre privilège, non-root, read-only | SO4 | Fait | `docker-compose.yml`, `security/hardening.md` |
+| Journal d'audit chaîné SHA-256 | ER5 | Fait, vérifié (`/journal/verify`) | `services/remediation-engine/tests/` |
+| Preuve de reprise par transaction métier (canari) | ER1, ER4 | Fait, démontré | `repetition-boucle-reprise.md` |
 
 ### Matrice du risque résiduel
 
@@ -136,7 +141,7 @@ Vraisemblance et gravité après mesures (échelle 1 à 4).
 
 | Scénario | Gravité | Vraisemblance résiduelle | Risque résiduel |
 |---|---|---|---|
-| SO1 DoS applicatif | 4 | 2 (absorbé par WAF + reprise auto) | Moyen |
+| SO1 DoS applicatif | 4 | 2 (absorbé par le WAF aux réglages par défaut ; reprise auto démontrée sur panne, pas encore sur DoS) | Moyen |
 | SO2 Injection web | 4 | 1 (bloqué par le CRS) | Faible |
 | SO3 Force brute | 3 | 1 (rate-limit + SOC) | Faible |
 | SO4 Compromission conteneur | 4 | 2 (durcissement, pas éliminé) | Moyen |
@@ -149,5 +154,5 @@ Vraisemblance et gravité après mesures (échelle 1 à 4).
 - **Modèle ML entraîné sur un trafic simulé** : à ré-entraîner sur des données réelles.
 - **Pas de TLS** (laboratoire sans domaine ni certificat).
 
-Ces risques sont acceptés dans le cadre du démonstrateur et documentés comme axes d'amélioration
-pour une version industrielle (voir le dossier d'ingénierie et [`../pca-pra/`](../pca-pra/)).
+Ces risques sont acceptés dans le cadre du démonstrateur. Arbitrages et recommandations pour une
+version industrielle : [`../recommandations.md`](../recommandations.md) ; continuité : [`../pca-pra/`](../pca-pra/).

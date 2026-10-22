@@ -169,7 +169,7 @@ resilience-alpha/
 ├── docs/                     Architecture, runbooks, gouvernance, résultats d'essais
 │   ├── architecture/
 │   ├── runbooks/
-│   ├── governance/           ebios-rm/  pca-pra/  nis2-dora/
+│   ├── governance/           ebios-rm/  pca-pra/  nis2-dora/  recommandations.md
 │   ├── test-results/
 │   └── etat-des-lieux.md     Avancement et reste à faire
 └── tests/
@@ -399,7 +399,7 @@ L'état d'avancement du projet (fait, à faire, priorités) est tenu à jour dan
 | Phase | Ce qui est visible sur le dashboard |
 |---|---|
 | **Avant** | Canari à 100 %, latence nominale, score d'anomalie bas, transactions OK |
-| **Pendant** | Hausse du trafic et de la latence, erreurs, canari en échec, score ML au-dessus du seuil, alerte levée |
+| **Pendant** | Hausse du trafic et de la latence, erreurs, canari en échec, score ML au-dessus du seuil, alerte levée (cible : chemin DoS → ML à démontrer après calibrage) |
 | **Remédiation** | Playbook exécuté (ban de l'IP source, relance du service), étapes affichées en temps réel |
 | **Après** | Canari revenu à 100 %, nouvelle transaction de contrôle réussie, incident clôturé |
 
@@ -475,7 +475,8 @@ Détails : [`security/hardening.md`](security/hardening.md). Check-list complèt
 |---|---|
 | Analyse de risques EBIOS RM | [`docs/governance/ebios-rm/`](docs/governance/ebios-rm/) |
 | PCA / PRA (scénarios, RTO/RPO, responsabilités, risques résiduels) | [`docs/governance/pca-pra/`](docs/governance/pca-pra/) |
-| Analyse NIS2 / DORA (exigences démontrées et non démontrables) | [`docs/governance/nis2-dora/`](docs/governance/nis2-dora/) |
+| Analyse NIS2 / DORA (applicabilité, exigences démontrées et non démontrables) | [`docs/governance/nis2-dora/`](docs/governance/nis2-dora/) |
+| **Arbitrages et recommandations à la direction** (ce que nous protégeons, compromis, recommandations, éléments vérifiables, approche industrielle) | [`docs/governance/recommandations.md`](docs/governance/recommandations.md) |
 | Runbooks d'incident | [`docs/runbooks/`](docs/runbooks/) |
 
 ---
@@ -495,7 +496,7 @@ Le script reproduit la CI : chaque dossier qui contient `tests/` est testé avec
 
 | Suite | Tests |
 |---|---|
-| `services/remediation-engine` | 26 |
+| `services/remediation-engine` | 28 |
 | `attack` (garde-fou de cible, flood) | 20 |
 | `services/dashboard` (vitest) | 19 |
 | `biometrics/gateway` | 16 |
@@ -571,7 +572,7 @@ git archive --format=zip --prefix=Workshop2026-M2-G16-Code/ \
 
 ## 17. Limites connues
 
-Ce démonstrateur est un prototype réalisé en quatre jours. Il n'est pas destiné à la production. Les limites identifiées (mono-hôte, absence de haute disponibilité réelle, modèle ML entraîné sur un trafic simulé, etc.) et ce que nous ferions différemment dans un contexte industriel sont détaillés dans le dossier d'ingénierie.
+Ce démonstrateur est un prototype réalisé en quatre jours. Il n'est pas destiné à la production. Les limites identifiées (mono-hôte, absence de haute disponibilité réelle, modèle ML entraîné sur un trafic simulé, etc.) et ce que nous ferions différemment dans un contexte industriel sont détaillés dans [`docs/governance/recommandations.md`](docs/governance/recommandations.md).
 
 Limites déjà identifiées côté frontal :
 
@@ -583,7 +584,17 @@ Limites déjà identifiées côté frontal :
 
 ## 18. Contributions
 
-*À compléter à partir de l'historique Git avant le rendu.*
+Relevé établi à partir de l'historique Git de `main` (commits hors merges et PR fusionnées), au 22 octobre 2026. Les contributions hors code (analyse de risques, relecture, essais sur le matériel, dossier, présentation, clip) n'apparaissent pas dans Git : **chaque membre complète sa ligne** avant le rendu.
+
+| Membre | Identité Git | Contributions visibles dans Git | Autres contributions (à compléter) |
+|---|---|---|---|
+| Ayoub FATHALLAH | `Ayoub Fathallah` | Création du dépôt, premier socle Docker Compose et observabilité ; fusion de la plupart des PR (revue) | |
+| Papa Cheikh GNINGUE | `PapaCheikh` | WAF ModSecurity + OWASP CRS, rate-limit, liste de bannissement (PR #8) ; fusion de PR | |
+| Mattheo COPPIN | `MattheoC-code` | Socle et CI ; chaîne de paiement, frontal, dashboard ; Vault, SOC, scripts d'attaque, biométrie ; détecteur ML, moteur de remédiation, playbooks, scénario e2e ; assistant RAG ; gouvernance (EBIOS RM, PCA/PRA, NIS2/DORA, runbooks) ; tests et documentation | |
+| Mouffid ABAYOMI | — | Aucun commit sur `main` à cette date | |
+| Zied BOUNOUR | — | Aucun commit sur `main` à cette date | |
+
+Détail : `git log --no-merges --format="%an %ad %s" --date=short`. Une partie du code a été produite avec un assistant d'IA (Claude Code), puis relue, testée et intégrée par l'équipe : chaque membre doit pouvoir expliquer le code qu'il présente.
 
 ---
 

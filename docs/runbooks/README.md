@@ -24,9 +24,11 @@ Réflexe commun : **la reprise n'est acquise que si une transaction de contrôle
 **Symptômes** : phase « Pendant » sur le dashboard, `canary_up` à 0 ou taux de succès en baisse,
 score ML au-dessus du seuil, pic de `429` au WAF.
 
-**Réponse automatique** : `ml-detector` (ou le SOC) alerte `remediation-engine`, qui bannit la
-source au WAF (`ban_ip.yml`), attend le retour nominal du canari, puis exécute une transaction
-de contrôle. Ban temporaire (5 min), levé automatiquement.
+**Réponse automatique** : `ml-detector` alerte `remediation-engine` (incident « anomalie »), qui
+bannit la source au WAF (`ban_ip.yml`, seulement si une IP dépasse 100 refus 403/429) puis
+relance payment-api (`restart_api.yml`). Si c'est le SOC qui alerte (`WafRateLimitSature`),
+seul le ban est appliqué. Le moteur attend ensuite 3 relevés `canary_up = 1`, puis exécute une
+transaction de contrôle. Ban temporaire (5 min), levé automatiquement.
 
 **Vérification manuelle** :
 1. Journal de l'incident (dashboard) : étapes ban → vérification → transaction de contrôle.

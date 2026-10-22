@@ -309,3 +309,43 @@ Après un `down -v`, on peut régénérer `.env` (étape 4.1) : bases, Vault et 
 | `[REFUS] Cible interdite` | Cible hors `192.168.137.0/24` (dont `127.0.0.1`) | Normal : les attaques ne visent que le WAF sur le point d'accès |
 | L'assistant RAG ne répond pas | Ollama éteint ou modèles absents | `ollama list`, `ollama pull` (étape 7), vérifier `OLLAMA_BASE_URL` |
 | Commandes avec guillemets imbriqués qui échouent | PowerShell 5.1 abîme les guillemets passés aux programmes | Utiliser les scripts versionnés (`tests/e2e/transaction_curl.sh`) |
+
+---
+
+## 12. Jour J : check-list de la démonstration et du Clip Chrono
+
+Le jury note surtout l'**axe 1** (5 points) : attaque depuis le PC Attaquant, détection, reprise **sans intervention**, nouvelle transaction réussie. Si un humain doit corriger pendant le live, l'axe vaut **0/5**. Tout se prépare donc la veille, à l'identique.
+
+### La veille (répétition générale, à refaire jusqu'à 3 succès d'affilée)
+
+1. Point d'accès `RESILIENCE-G16` actif, **puis** Docker Desktop. `.env` : `WAF_BIND_IP=192.168.137.1`.
+2. Réglages de démonstration retenus dans `.env` (à noter dans [`calibrage-attaque-dos.md`](docs/test-results/calibrage-attaque-dos.md)) : `FRONTEND_API_RATE_LIMIT`, `FRONTEND_API_BURST`.
+3. Stack complète (étape 5), puis **modèle ML entraîné sur du vrai trafic** (30 min sans attaque) :
+   ```powershell
+   pip install -r ml/detector/requirements.txt
+   python ml/training/collect.py --minutes 30 --out ml/data/nominal.csv
+   python ml/training/train.py --data ml/data/nominal.csv
+   docker compose --profile ia restart ml-detector
+   ```
+   Dans Prometheus, `ml_model_fallback` doit valoir `0`.
+4. Scénario complet sur le PC Hôte (étape 9) : code de sortie 0, et **chronométrer** du lancement de l'attaque à l'incident `CLOSED`.
+5. Depuis le PC Attaquant, rejouer l'attaque seule en filmant l'écran du PC Hôte : c'est la prise du Clip Chrono.
+
+### Budget de temps du Clip Chrono (60 s, plan continu, sans coupe)
+
+| Moment | Ce qu'on voit (dashboard + terminal de l'attaquant) | Temps visé |
+|---|---|---|
+| Avant | Phase « Avant », canari 100 %, transaction OK | 0-5 s |
+| Attaque | Lancement de `flood.py` sur le PC Attaquant | 5 s |
+| Pendant | Latence et erreurs qui montent, score ML qui franchit 0,7 | 10-30 s |
+| Remédiation | Incident ouvert, playbooks (ban, relance) affichés en direct | 30-35 s |
+| Après | 3 relevés du canari OK (~15 s), transaction de contrôle `COMPLETED`, incident `CLOSED` | 35-55 s |
+
+Si la boucle dépasse 60 s en répétition, réduire `ML_ALERT_CONSECUTIVE` à 2 (détection plus rapide) ou durcir l'attaque pour que la dégradation soit plus nette ; ne **jamais** accélérer ni couper la vidéo.
+
+### Le matin du jury
+
+- Tout allumer 30 minutes avant : point d'accès, Docker, stack, Ollama, passerelle biométrique.
+- `docker compose ps -a` : tout `healthy`. Dashboard en phase « Avant ». Une transaction manuelle `COMPLETED` depuis le frontal.
+- Prévoir l'annonce au jury : après la remédiation, l'IP de l'attaquant est bannie 5 minutes (comportement voulu), le service reste disponible pour les clients internes et le canari.
+- Plan B, annoncé comme tel : si le DoS ne dégrade pas assez le service en direct, montrer la seconde voie automatique (arrêt de `payment-api` → `TargetDown` → relance Ansible → transaction de contrôle), puis le Clip Chrono pour la détection ML. Ce plan B prouve la reprise autonome mais **pas** une attaque menée depuis le PC Attaquant : il ne remplace pas un DoS calibré.
