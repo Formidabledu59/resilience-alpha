@@ -36,6 +36,8 @@ La caméra USB est un périphérique du PC Hôte ; Docker Desktop (Windows) n'y 
 
 ## Démarrer (résumé)
 
+> **Désactivée par défaut** : la biométrie est préparée mais pas activée pour la démonstration. Pour l'activer, mettre `BACKOFFICE_BIOMETRICS=true` dans `.env` puis `docker compose --profile app up -d dashboard`.
+
 1. Passerelle sur le PC Hôte : voir [`gateway/README.md`](gateway/README.md).
 2. Enrôler un visage : dans le back-office, onglet **Habilitations**.
 3. ESP8266 : flasher le firmware ([`esp8266/README.md`](esp8266/README.md)).

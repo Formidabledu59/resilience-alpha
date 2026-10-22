@@ -10,6 +10,7 @@ RUN npm test && npm run build
 
 # --- Exécution : fichiers statiques servis par nginx non-root (uid 101, port 8080)
 FROM nginxinc/nginx-unprivileged:1.30.4-alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Template : l'entrypoint de l'image remplace les ${VAR} définies et écrit /etc/nginx/conf.d (tmpfs)
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 8080

@@ -498,7 +498,7 @@ Le script reproduit la CI : chaque dossier qui contient `tests/` est testé avec
 |---|---|
 | `services/remediation-engine` | 34 |
 | `attack` (garde-fou de cible, flood) | 20 |
-| `services/dashboard` (vitest) | 19 |
+| `services/dashboard` (vitest) | 24 |
 | `biometrics/gateway` | 16 |
 | `assistant-rag` | 13 |
 | `ml/detector` | 16 |

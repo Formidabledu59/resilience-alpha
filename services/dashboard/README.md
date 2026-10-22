@@ -28,9 +28,11 @@ Règles de la phase (`src/status.js`, testées) :
 
 Les zones « Score d'anomalie » et « Incidents » affichent un message d'attente tant que les profiles `ia` et `remediation` ne sont pas démarrés.
 
-## Back-office biométrique (consigne additionnelle 1)
+## Back-office biométrique (consigne additionnelle 1, désactivé par défaut)
 
-`src/components/BackOfficeGate.jsx` enchaîne identifiant, visage (caméra du PC Hôte) et mot de passe ; `src/components/Habilitations.jsx` gère l'enrôlement. La logique (`src/backoffice.js`, `src/biometrics.js`) est testée. La passerelle tourne en natif sur le PC Hôte (port 8700, accès caméra) : voir [`biometrics/README.md`](../../biometrics/README.md).
+La porte biométrique n'est active que si `BACKOFFICE_BIOMETRICS=true` (`.env`). nginx génère `/config.json` au démarrage du conteneur à partir de cette variable (`nginx.conf` est un template), et `src/main.jsx` le lit avant d'afficher l'application (`src/config.js`) : pas besoin de recompiler pour changer de mode. Par défaut (`false`, ou fichier absent ou illisible), la supervision s'affiche directement, sans appel à la passerelle.
+
+Quand elle est activée, `src/components/BackOfficeGate.jsx` enchaîne identifiant, visage (caméra du PC Hôte) et mot de passe ; `src/components/Habilitations.jsx` gère l'enrôlement. La logique (`src/backoffice.js`, `src/biometrics.js`) est testée. La passerelle tourne en natif sur le PC Hôte (port 8700, accès caméra) : voir [`biometrics/README.md`](../../biometrics/README.md).
 
 ## Relais nginx (lecture seule, sauf la transaction de contrôle)
 
@@ -43,6 +45,7 @@ Les zones « Score d'anomalie » et « Incidents » affichent un message d'atten
 | `/api/remediation/journal/verify` | `remediation-engine:8000/journal/verify` | GET |
 | `/api/remediation/incidents/inc-AAAA-MM-JJ-NNN/report` | `remediation-engine:8000/incidents/<id>/report` | GET, identifiant contrôlé par expression régulière |
 | `/api/biometrics/` | `host.docker.internal:8700/` (passerelle biométrique native) | GET, POST |
+| `/config.json` | réponse de nginx, générée depuis `BACKOFFICE_BIOMETRICS` | GET |
 
 Tout autre chemin `/api/` renvoie 404. Le dashboard n'a aucun accès à Docker, Vault ou aux secrets (vérifié par un test). Le DNS Docker est résolu à chaque requête : nginx démarre même si un service n'existe pas encore.
 
@@ -59,4 +62,4 @@ Tout autre chemin `/api/` renvoie 404. Le dashboard n'a aucun accès à Docker, 
 docker run --rm -v "${PWD}/services/dashboard:/app" -v resilience-db-nm:/app/node_modules -w /app node:22.23.3-alpine3.24 sh -c "npm install -g npm@11.21.0 && npm ci && npm test && npm run build"
 ```
 
-19 tests : phases de la démonstration, lecture des réponses Prometheus, formatage français, correspondance entre les URL appelées et les relais nginx, typographie, parcours du back-office (identifiant, visage, mot de passe). Sans Docker, depuis la racine : `python tests/run_all.py --only dashboard` (Node.js 22 requis).
+24 tests : phases de la démonstration, lecture des réponses Prometheus, formatage français, correspondance entre les URL appelées et les relais nginx, typographie, parcours du back-office (identifiant, visage, mot de passe), porte biométrique activable par configuration et désactivée par défaut. Sans Docker, depuis la racine : `python tests/run_all.py --only dashboard` (Node.js 22 requis).
