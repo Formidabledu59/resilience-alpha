@@ -23,7 +23,7 @@ Règles de la phase (`src/status.js`, testées) :
 | Remédiation | un incident `OPEN`, `REMEDIATING` ou `VERIFYING` |
 | Pendant (incident) | `canary_up == 0` ou taux de succès inférieur à 80 % |
 | Pendant (dégradé) | taux de succès entre 80 % et 99 % |
-| Après | incident clôturé depuis moins de 10 minutes et service nominal |
+| Après | incident clôturé depuis moins de 90 s et canari OK (le taux de succès, calculé sur 60 s, est encore bas : il n'est pas pris en compte), ou clôturé depuis moins de 10 minutes et service nominal |
 | Avant | fonctionnement nominal |
 
 Les zones « Score d'anomalie » et « Incidents » affichent un message d'attente tant que les profiles `ia` et `remediation` ne sont pas démarrés.
@@ -62,4 +62,4 @@ Tout autre chemin `/api/` renvoie 404. Le dashboard n'a aucun accès à Docker, 
 docker run --rm -v "${PWD}/services/dashboard:/app" -v resilience-db-nm:/app/node_modules -w /app node:22.23.3-alpine3.24 sh -c "npm install -g npm@11.21.0 && npm ci && npm test && npm run build"
 ```
 
-24 tests : phases de la démonstration, lecture des réponses Prometheus, formatage français, correspondance entre les URL appelées et les relais nginx, typographie, parcours du back-office (identifiant, visage, mot de passe), porte biométrique activable par configuration et désactivée par défaut. Sans Docker, depuis la racine : `python tests/run_all.py --only dashboard` (Node.js 22 requis).
+25 tests : phases de la démonstration, lecture des réponses Prometheus, formatage français, correspondance entre les URL appelées et les relais nginx, typographie, parcours du back-office (identifiant, visage, mot de passe), porte biométrique activable par configuration et désactivée par défaut. Sans Docker, depuis la racine : `python tests/run_all.py --only dashboard` (Node.js 22 requis).

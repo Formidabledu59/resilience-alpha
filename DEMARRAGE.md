@@ -99,7 +99,7 @@ python tests/run_all.py --only canary   # une seule suite
 python tests/run_all.py --no-install    # relance rapide
 ```
 
-Les dépendances sont installées dans `.venv-tests/` (ignoré par Git) : rien n'est installé dans le Python du PC. Résultat attendu : `12/12 suites OK` (178 tests le 22/10). Détail des suites : [README, section 14](README.md#14-tests).
+Les dépendances sont installées dans `.venv-tests/` (ignoré par Git) : rien n'est installé dans le Python du PC. Résultat attendu : `12/12 suites OK` (183 tests le 22/10). Détail des suites : [README, section 14](README.md#14-tests).
 
 ---
 

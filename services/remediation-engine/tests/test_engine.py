@@ -161,3 +161,19 @@ def test_transaction_de_controle_toujours_en_echec(tmp_path, observer):
     _, incident = asyncio.run(run_incident(tmp_path, observer, ko))
     assert incident["status"] == "FAILED"
     assert [s["action"] for s in incident["steps"]].count("Transaction de contrôle (essai 2/3)") == 1
+
+
+def test_relecture_des_preuves_avant_le_ban(tmp_path, observer):
+    async def scenario():
+        async def probe():
+            return {"ok": True, "status": "COMPLETED"}
+        engine = Engine(Journal(tmp_path / "j.jsonl", echo=False), observer, probe,
+                        verify_timeout=1.0, poll_interval=0.01)
+        incident_id = await engine.receive(alert())
+        await asyncio.gather(*engine.tasks)
+        refreshed = await engine.refresh_evidence(incident_id)
+        return refreshed, len(observer.windows)
+
+    refreshed, collections = asyncio.run(scenario())
+    assert refreshed["evidence"]["opening"]["collected_at"]
+    assert collections == 3   # ouverture, bilan, puis la relecture demandée

@@ -70,3 +70,66 @@ def test_pas_de_ban_sans_ip_suspecte():
     executor = AnsibleExecutor(runner=runner)
     result = asyncio.run(executor("ban_ip.yml", make_incident(evidence=sample_evidence(blocked=5))))
     assert result.startswith("aucune IP")
+
+
+def _executor(refresh, calls, attempts=2):
+    async def runner(name, extra_vars):
+        calls.append((name, extra_vars))
+        return f"{name} ok"
+    return AnsibleExecutor(runner=runner, ban_minutes=0.0001, refresh=refresh,
+                           refresh_attempts=attempts, refresh_seconds=0)
+
+
+def test_ban_apres_relecture_des_journaux_waf():
+    # Répétition du 22/10 : détection en 21 s, Loki n'avait pas encore reçu 1000 requêtes de
+    # l'attaquant au moment de l'alerte -> « pas de ban ». La relecture le fait apparaître.
+    calls, relectures = [], []
+    vide = make_incident(evidence=sample_evidence(blocked=0))
+    vide["evidence"]["opening"]["waf"]["clients"] = []
+    plein = make_incident(evidence=sample_evidence(blocked=0))
+    plein["evidence"]["opening"]["waf"]["top_clients"] = [{"ip": "172.23.0.1", "count": 4200}]
+
+    async def refresh(incident_id):
+        relectures.append(incident_id)
+        return plein
+
+    async def scenario():
+        executor = _executor(refresh, calls)
+        result = await executor("ban_ip.yml", vide)
+        await asyncio.gather(*executor.tasks)
+        return result
+
+    assert asyncio.run(scenario()) == "ban_ip.yml ok"
+    assert len(relectures) == 1
+    assert calls[0][1]["ban_ips"] == ["172.23.0.1"]
+
+
+def test_pas_de_relecture_si_l_attaquant_est_deja_visible():
+    calls, relectures = [], []
+
+    async def refresh(incident_id):
+        relectures.append(incident_id)
+        return make_incident()
+
+    async def scenario():
+        executor = _executor(refresh, calls)
+        result = await executor("ban_ip.yml", make_incident(evidence=sample_evidence(blocked=500)))
+        await asyncio.gather(*executor.tasks)
+        return result
+
+    assert asyncio.run(scenario()) == "ban_ip.yml ok"
+    assert relectures == []
+
+
+def test_pas_de_ban_apres_les_relectures():
+    calls, relectures = [], []
+    vide = make_incident(evidence=sample_evidence(blocked=0))
+    vide["evidence"]["opening"]["waf"]["clients"] = []
+
+    async def refresh(incident_id):
+        relectures.append(incident_id)
+        return vide
+
+    result = asyncio.run(_executor(refresh, calls)("ban_ip.yml", vide))
+    assert "pas de ban" in result
+    assert len(relectures) == 2 and calls == []

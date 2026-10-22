@@ -25,6 +25,17 @@ describe('computePhase : les quatre temps de la démonstration', () => {
     expect(computePhase({ ...base, incidents: closed(30) })).toBe('nominal')
   })
 
+  it("après : reprise affichée dès la clôture, sans attendre la fenêtre de 60 s du taux de succès", () => {
+    // Répétition du 22/10 : incident clos, canari OK, mais taux sur 60 s à 91 % -> restait « dégradé » 1 min.
+    const closedSecondsAgo = (s) => [{ status: 'CLOSED', closed_at: new Date((NOW - s) * 1000).toISOString() }]
+    expect(computePhase({ ...base, successRatio: 0.91, incidents: closedSecondsAgo(5) })).toBe('recovered')
+    expect(computePhase({ ...base, successRatio: 0.6, incidents: closedSecondsAgo(30) })).toBe('recovered')
+    // Le canari échoue de nouveau : l'incident prime, même juste après une clôture.
+    expect(computePhase({ ...base, canaryUp: 0, successRatio: 0.91, incidents: closedSecondsAgo(5) })).toBe('incident')
+    // Passé 90 s, le taux de succès redevient la référence (une nouvelle dégradation se voit).
+    expect(computePhase({ ...base, successRatio: 0.91, incidents: closedSecondsAgo(120) })).toBe('degraded')
+  })
+
   it('inconnu si Prometheus ne répond pas ou si le canari n\'a jamais tourné', () => {
     expect(computePhase({ ...base, prometheusOk: false })).toBe('unknown')
     expect(computePhase({ ...base, canaryUp: null, successRatio: null })).toBe('unknown')

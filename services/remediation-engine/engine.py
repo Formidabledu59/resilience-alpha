@@ -169,6 +169,11 @@ class Engine:
         self._step(incident, label, detail, "analysis")
         self._save(incident, f"evidence.{moment}")
 
+    async def refresh_evidence(self, incident_id: str) -> dict:
+        """Relit les preuves d'ouverture (journaux WAF arrivés depuis l'alerte) ; utilisé avant un ban."""
+        await self._evidence(incident_id, "opening")
+        return self._current(incident_id)
+
     async def _remediate(self, incident_id: str) -> None:
         incident = self._current(incident_id)
         incident["status"] = "REMEDIATING"
