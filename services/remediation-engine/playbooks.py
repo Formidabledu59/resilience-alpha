@@ -16,6 +16,11 @@ BAN_MINUTES = float(os.environ.get("BAN_MINUTES", "5"))
 # Seuil de refus (403/429) à partir duquel une IP est bannie : le canary (1 requête toutes les
 # 5 s) n'y arrive jamais, un flood le dépasse en quelques secondes.
 BAN_MIN_REQUESTS = int(os.environ.get("BAN_MIN_REQUESTS", "100"))
+# Ou : IP qui inonde le WAF sans être refusée (limites de débit relâchées, attaque qui passe sous
+# les rate-limits). 1000 requêtes sur la fenêtre de l'incident (~5 min) : le canary en fait ~60,
+# un utilisateur réel quelques centaines au plus. Mesuré le 22/10 au moment de l'alerte : 1 883 à
+# 7 372 requêtes pour l'attaquant (Loki reçoit les journaux avec quelques secondes de retard).
+BAN_MIN_FLOOD_REQUESTS = int(os.environ.get("BAN_MIN_FLOOD_REQUESTS", "1000"))
 RESTARTABLE = {"payment-api", "auth-service", "frontend"}
 TIMEOUT_SECONDS = 90
 RESULT = re.compile(r"RESULT: ([^\"'\n]+)")
@@ -28,10 +33,14 @@ class PlaybookError(RuntimeError):
     pass
 
 
-def ips_to_ban(incident: dict, minimum: int = BAN_MIN_REQUESTS) -> list[str]:
-    """IP les plus refusées par le WAF pendant l'incident, au-delà du seuil."""
-    clients = ((incident.get("evidence") or {}).get("opening") or {}).get("waf", {}).get("clients") or []
-    return [c["ip"] for c in clients if c["count"] >= minimum][:5]
+def ips_to_ban(incident: dict, minimum: int = BAN_MIN_REQUESTS,
+               flood_minimum: int = BAN_MIN_FLOOD_REQUESTS) -> list[str]:
+    """IP à bannir : refusées au moins `minimum` fois par le WAF, ou ayant envoyé au moins
+    `flood_minimum` requêtes pendant la fenêtre de l'incident (5 IP au plus)."""
+    waf = ((incident.get("evidence") or {}).get("opening") or {}).get("waf", {})
+    refused = [c["ip"] for c in waf.get("clients") or [] if c["count"] >= minimum]
+    flooding = [c["ip"] for c in waf.get("top_clients") or [] if c["count"] >= flood_minimum]
+    return list(dict.fromkeys(refused + flooding))[:5]
 
 
 def service_to_restart(incident: dict) -> str:
@@ -76,7 +85,8 @@ class AnsibleExecutor:
         if playbook == "ban_ip.yml":
             ips = ips_to_ban(incident)
             if not ips:
-                return f"aucune IP au-delà de {BAN_MIN_REQUESTS} requêtes refusées : pas de ban"
+                return (f"aucune IP au-delà de {BAN_MIN_REQUESTS} requêtes refusées "
+                        f"ni de {BAN_MIN_FLOOD_REQUESTS} requêtes envoyées : pas de ban")
             result = await self.runner(playbook, {"incident_id": incident["id"], "ban_ips": ips,
                                                   "ban_minutes": self.ban_minutes})
             task = asyncio.create_task(self._unban_later(incident["id"]))

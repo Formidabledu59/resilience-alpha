@@ -11,6 +11,27 @@ def test_seules_les_ip_au_dela_du_seuil_sont_bannies():
     assert ips_to_ban(make_incident(evidence=sample_evidence(blocked=10)), minimum=100) == []
 
 
+def test_ip_qui_inonde_le_waf_bannie_meme_sans_refus():
+    # Répétition du 22/10 : limites de débit relâchées, aucun 403/429, l'attaquant n'était pas banni.
+    incident = make_incident(evidence=sample_evidence(blocked=0))
+    incident["evidence"]["opening"]["waf"]["top_clients"] = [
+        {"ip": "172.23.0.1", "count": 18000},   # flood : ~60 req/s sur 5 min
+        {"ip": "172.24.0.9", "count": 61},      # canary : 1 requête toutes les 5 s
+    ]
+    assert ips_to_ban(incident, minimum=100, flood_minimum=3000) == ["172.23.0.1"]
+
+
+def test_ip_refusee_et_inondante_bannie_une_seule_fois():
+    incident = make_incident(evidence=sample_evidence(blocked=500))
+    incident["evidence"]["opening"]["waf"]["top_clients"] = [{"ip": "172.23.0.1", "count": 9000}]
+    assert ips_to_ban(incident, minimum=100, flood_minimum=3000) == ["172.23.0.1"]
+
+
+def test_preuves_anciennes_sans_top_clients():
+    # Incidents journalisés avant l'ajout de top_clients : pas d'erreur.
+    assert ips_to_ban(make_incident(evidence=sample_evidence(blocked=10)), minimum=100) == []
+
+
 def test_service_a_redemarrer_selon_l_alerte():
     incident = make_incident()
     assert service_to_restart(incident) == "payment-api"
