@@ -36,3 +36,28 @@ def test_modele_reproductible():
     point = {"canary_success_ratio": 0.5, "canary_up": 1.0, "latency_p95": 0.5,
              "throughput": 0.1, "errors_5xx": 1.0, "request_rate": 10.0}
     assert score_one(m1, n1, point) == score_one(m2, n2, point)
+
+
+NOMINAL = {"canary_success_ratio": 1.0, "canary_up": 1.0, "latency_p95": 0.05,
+           "throughput": 0.25, "errors_5xx": 0.0, "request_rate": 1.0}
+
+
+def test_canary_up_influence_le_score():
+    # Régression : canary_up constant à l'entraînement était ignoré par l'Isolation Forest.
+    model, normalizer = fit(synthetic_nominal())
+    assert score_one(model, normalizer, {**NOMINAL, "canary_up": 0.0}) > score_one(model, normalizer, NOMINAL)
+
+
+def test_degradation_realiste_declenche_l_alerte():
+    # Ce que doit produire un DoS calibré : service dégradé sans être arrêté.
+    model, normalizer = fit(synthetic_nominal())
+    degrade = {"canary_success_ratio": 0.5, "canary_up": 1.0, "latency_p95": 2.0,
+               "throughput": 0.1, "errors_5xx": 0.5, "request_rate": 11.0}
+    assert score_one(model, normalizer, degrade) >= 0.7
+
+
+def test_flood_absorbe_par_les_rate_limits_ne_declenche_pas():
+    # Calibrage : si le WAF et le frontal absorbent tout (seul request_rate bouge), pas
+    # d'incident. Le DoS doit dégrader réellement le service (docs/test-results/calibrage-attaque-dos.md).
+    model, normalizer = fit(synthetic_nominal())
+    assert score_one(model, normalizer, {**NOMINAL, "request_rate": 11.0}) < 0.7
